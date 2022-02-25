@@ -1,0 +1,94 @@
+<html>
+    <head>
+        <link rel="stylesheet" href="main.css">
+        <script id="vertex" type="x-shader">
+            attribute vec2 a_position;
+            uniform mat3 u_matrix;
+
+            attribute vec2 a_texcoord;
+            varying vec2 v_texcoord;
+            
+            void main() {
+                vec2 position = (u_matrix * vec3(a_position, 1)).xy;
+              
+                gl_Position = vec4(position, 1, 1);
+                v_texcoord = a_texcoord;
+            }
+        </script>
+        <script id="fragment" type="x-shader">
+            precision mediump float;
+
+            varying vec2 v_texcoord;
+
+            uniform sampler2D u_texture;
+
+            void main() {
+                gl_FragColor = texture2D(u_texture, v_texcoord);
+            }
+        </script>
+    </head>
+    <body style="overflow:hidden;margin:0;background-color: black;color: white;">
+        <canvas id="RenderCanvas" tabindex="0" autofocus ></canvas>
+        <div style="z-index: 100;">
+            <ul id="toolsbar">
+                <p id="toolsbar-title"><u><b>TOOLS</b></u></p>
+
+                <div id="toolsbar-section">
+                    <li><button onclick="switchInputSystem(InputSystem.Transform, Tools.select)">Select</button></li>
+                </div>
+
+                <div id="toolsbar-section">
+                    <p id="toolsbar-header"><b>Create</b></p>
+                    <li><button onclick="switchInputSystem(InputSystem.Create, Tools.create_class)">Add New Class</button></li>
+                    <li><button onclick="switchInputSystem(InputSystem.Create, Tools.create_enum)">Add New Enum</button></li>
+                    <li><button onclick="switchInputSystem(InputSystem.Create, Tools.create_abstract)">Add New Abstract</button></li>
+                    <li><button onclick="switchInputSystem(InputSystem.Create, Tools.create_main)">Add Main</button></li>
+                    <br>
+                    <li><button onclick="switchInputSystem(InputSystem.Create, Tools.create_connection)">Add Connection</button></li>
+                    <br>
+                    <li><button onclick="switchInputSystem(InputSystem.Create, Tools.add_property)">Add Property</button></li>
+                </div>
+
+                <div id="toolsbar-section">
+                    <p id="toolsbar-header"><b>Transform</b></p>
+                    <li><button onclick="switchInputSystem(InputSystem.Transform, Tools.transform_scale)">Scale</button></li>
+                </div>
+                
+                <div id="toolsbar-section">
+                    <p id="toolsbar-header"><b>Delete</b></p>
+                    <li><button onclick="switchInputSystem(InputSystem.Delete)">Remove Container</button></li>
+                </div>
+                
+                <div id="toolsbar-section">
+                    <p id="toolsbar-header"><b>Other</b></p>
+                    <li><button onclick="ShowAll()">Show All</button></li>
+                    <li><input id="file" type="file" style="max-width: 85px;"multiple></li>
+                    <li><button onclick="ParseFile()">Parse</button></li>
+                    <a id="downloadAnchorElem" style="display:none"></a>
+                </div>
+            </ul>
+        </div>
+        <div id="console-window" style="display: none;">
+            <div style="margin: 10px; margin-left:0px;margin-top:0">
+                <p style="margin:0;"><u>CONSOLE</u></p>
+            </div>
+            <div id="debugStats" style="height:85%; overflow-y:auto;"></div>
+        </div>
+    </body>
+    <script src="HeavyTest.js"></script>
+    <script src="BasicTest.js"></script>
+    <script src="constants.js"></script>
+    <script src="debug.js"></script>
+    <script src="uiUtils.js"></script>
+    <script src="2DMath.js"></script>
+    <script src="rectangle.js"></script>
+    <script src="container.js"></script>
+    <script src="connection.js"></script>
+    <script src="JSONDatabase.js"></script>
+    <script src="graphics.js"></script>
+    <script src="texturePainter.js"></script>
+    <script src="input.js"></script>
+    <script src="scene.js"></script>
+    <script src="parse.js"></script>
+    <script src="app.js"></script>
+</html>

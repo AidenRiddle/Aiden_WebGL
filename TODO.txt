@@ -1,0 +1,57 @@
+Features:
+    - Visual Indicator telling the user which tool is currently active. (Icons, colors, etc).
+    - New UI window listing a hierarchy of all the Classes / Enums / etc present in the world.
+    - Ability to remove a variable or method.
+    - Parse (Java) : 'package' token should group together multiple classes in a "grouping container".
+    - Create a settings menu.
+    - Box Select multiple containers.
+    - Ability to change the order of properties (Click and drag sorting).
+
+Optimizations:
+    - CPU render time is too slow. 'SimplePreRenderVertexFetch' needs a rework.
+    - Pre-allocate a pool of Index Buffers to speed up GPU render time.
+
+Improvements:
+    - Cleanup.
+    - Parse (Java) needs support for:
+        - '@' tokens (like @Override).
+        - 'static' token.
+        - 'import' token should automatically create a new Container with the import's name.
+    - Parse (Java) needs to verify names and type names (i.e an instruction "int 358 = 0;" is bad since a variable name cannot be a number in Java);
+    - Text rendering needs more features (possibility to change color of text).
+    - Can texture coordinates be improved? (Removing the 'textureCoordinatesFromStyle' function in the constants.js).
+    - Improve the Vertex Recycling condition (i.e If the vertex has not moved within the frame, don't update).
+    - Vertex.Translate() modifies the "referenceOrigin" variable instead of the "offset" variable. Create a distinction for the 2 features.
+    - Mesh.AddVertex() can be a little unintuitive to use. Find an alternative.
+    - Visibility Handle should no longer hide the container, but instead collapse it.
+
+Known Bugs:
+    - Update 'gl' canvas after screen resize.
+    - Zoom consistently scales the objects in the scene from the origin point of the world. Must scale from mouse position (or at least from the center of the screen).
+    - Scaling containers into themselves causes an overlap. Container should have a minimum width to avoid scaling into itself.
+    - When the cursor moves off the canvas during "Panning" or "Translating", the state is maintained and requires an extra click to stop.
+
+Long Term:
+	- Replace background with an image texture.
+    - Button to center screen on a selected Container.
+    - Undo option (when accidentally creating a container for example).
+    - If zoomed out far enough, containers will only display their Name and Type (i.e a class named "calculator" will be a blue rectangle with the text "calculator").
+    - Various color palettes (different variations for accessibility and color-blind).
+    - Container names should be displayed in White (or any lighter color that is more visible).
+    - Add settings for various display types (i.e displaying dependencies only on a class rather than its properties).
+
+Secondaries:
+	- Add more colors.
+	- Store all 'InputActions' into array for easy iteration within 'InputManager'.
+	- Revamp Console layout and display.
+    - Highlight the "active" container.
+    - Is enabling/deactivating individual child objects good ? ... Possible 'meshRendererEnabled' map inside the Scene class?.
+    - Possibility of changing fonts (including none-monospace fonts).
+    - ConnectionID algorithm has a very VERY small chance of being repeated.
+    - Collision Bounding Boxes are too big and should be more accurate.
+
+Current Focus:
+    - Ability to remove a variable or method.
+
+Continuation of last session:
+	- Rectangle Child not working. Find a solution to changing the referenceOrigin.

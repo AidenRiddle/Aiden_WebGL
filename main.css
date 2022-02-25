@@ -1,0 +1,60 @@
+li {
+    margin : 0;
+    margin-top: 5px;
+}
+
+p {
+    margin-top: 0px;
+}
+
+#toolsbar{
+    position:absolute; 
+    z-index: 100;
+    list-style-type: none;
+    top: 25px;
+    left: 25px;
+    padding: 3px; 
+    border: 2px solid white; 
+    border-radius: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    margin: 0;
+}
+
+#toolsbar-title{
+    font-size:xx-large;
+    margin: 15px;
+    margin-bottom: 7px;
+}
+
+#toolsbar-section{
+    width: fit-content;
+    margin-right: 15px;
+    margin-top: 0px;
+    margin-left: 15px;
+    margin-bottom: 20px;
+}
+
+#toolsbar-header{
+    font-size:x-large;
+    margin: auto;
+}
+
+#console-window{
+    position:absolute;
+    z-index: 100;
+    bottom: 25px;
+    left: 25px;
+    padding: 15px; 
+    border: 2px solid white; 
+    border-radius: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+
+    width: 400px;
+    height : 225px;
+}
+
+.container-text-variables{
+    color:black;
+}
