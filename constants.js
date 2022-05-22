@@ -1,5 +1,13 @@
 const AppSettings = {
     vertexSize : 2,         //2 dimensions: x, y
+    targetSupportedMeshes : 5000,
+    glBytesInFloat : 4,     //Changing this value does NOT change the bytes allocated by WebGL for floats
+    get vertexBufferSize(){
+        return this.targetSupportedMeshes * 4 * this.vertexSize * this.glBytesInFloat;
+    },
+    get matrixBufferSize(){
+        return this.targetSupportedMeshes * 9 * this.glBytesInFloat;
+    }
 }
 
 const ColorUtils = {
@@ -15,7 +23,7 @@ const ColorUtils = {
 
     colorToRGBAString : function(color){ return "rgba(" + color[0] * 255 + ", " + color[1] * 255 + ", " + color[2] * 255 + ", " + color[3] + ")"; },
 
-    defaultTextureCoordinates : [0, 0, 1, 0, 1, 1, 0, 1],
+    defaultTextureCoordinates : new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]),
 
     textureCoordinatesFromStyle : function(style){
         const names = Object.getOwnPropertyNames(Color);
@@ -31,12 +39,14 @@ const ColorUtils = {
         let yMin = 0;
         let yMax = 1;
 
-        return [
+        //return [xMin, yMax, xMax, yMax, xMax, yMin, xMin, yMax, xMax, yMin, xMin, yMin];
+
+        return new Float32Array([
             xMin, yMin,
             xMax, yMin,
             xMax, yMax,
             xMin, yMax
-        ];
+        ]);
     }
 }
 
@@ -104,9 +114,10 @@ const Tools = {
 }
 
 const Scale = {
-    Default: 0,
-    Inherit: 1,
-    Local: 2,
+    Default: 0,             //Inherit both X and Y scale of the parent
+    InheritX: 1,
+    InheritY: 2,
+    IgnoreParentScale: 3,
 }
 
 const Hitbox = {
@@ -126,7 +137,8 @@ const Hitbox = {
 
 const DrawMode = {
     Fill : 4,
-    Outline : 1
+    Outline : 1,
+    TriangleStrip : 5
 }
 
 const Defaults = {
@@ -150,8 +162,6 @@ const Defaults = {
     container_body_margin_bottom : 20,
     container_body_margin_right : 20,
     container_body_margin_left : 20,
-
-     
 }
 
 const System = {

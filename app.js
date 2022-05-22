@@ -40,7 +40,7 @@ class Main {
     constructor(){
         this.#tex = new TexturePainter();
         this.#jsondb = new JSONDataBase();
-        this.#gl = new Graphics(this.#tex);
+        this.#gl = new RGraphics(this.#tex);
         this.#scene = new Scene(this.#gl, this.#jsondb);
         VecMath.scene = this.#scene;
         this.#gl.scene = this.#scene;
@@ -53,7 +53,7 @@ class Main {
         document.body.onmousedown = function(){return false};  //Disables the scroll 'compass' when clicking with middle mouse
         this.SwitchInputSystem(InputSystem.Create);
         Debug.ToggleDebugMode();
-        this.LoadScene(HeavyTest);
+        this.LoadScene(BasicTest);
     }
 
     ParseFile(){

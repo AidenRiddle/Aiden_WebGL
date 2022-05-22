@@ -33,6 +33,7 @@ class Container extends Rectangle {
     #colliderTypes;
 
     #biggestTextureWidth = 0;
+    #variableReferenceOrigin;
     #methodReferenceOrigin;
     #boundingBox;
 
@@ -93,104 +94,161 @@ class Container extends Rectangle {
     }
 
     constructor(pos1, pos2, name, containerType = ContainerType.Class){
-        let transform = new Transform();
 
         //Container Settings.
-        transform.parent = SceneMesh.scene;
-        transform.origin = SceneMesh.origin;
-        transform.offset = new Vector2((pos1.x + pos2.x) / 2, (pos1.y + pos2.y) / 2);
-        transform.dimensions = new Vector2(Math.abs(pos2.x - pos1.x), Math.abs(pos2.y - pos1.y));
-        transform.scale = Vector2.one;
-        transform.scaleInheritanceMap = { x: Scale.Local, y: Scale.Local };
         let rp = [
-            //RenderProperties.FillProperties(Color.pink, 1),
+            RenderProperties.FillProperties(Color.light,-1),
             RenderProperties.OutlineProperties(ContainerType.color(containerType), 1)
         ];
-        super(transform, rp);
+        super(SceneMesh, new Vector2(pos2.x - pos1.x, pos2.y - pos1.y), new Vector2(Defaults.container_width, Defaults.container_height), rp);
 
-        //Body Settings.
-        transform.parent = this;
-        transform.origin = this.BL;
-        transform.offset = new Vector2(this.dimensions.x / 2, this.dimensions.y / 2);
-        transform.scale = new Vertex(new Vector2(0, -(Defaults.translateHandle_height / Defaults.container_height)), this.scale, new Vector2(1, 1));
-        transform.scaleInheritanceMap = { x: Scale.Inherit, y: Scale.Local };
-        rp = [RenderProperties.FillProperties(Style.container_body)];
-        //rp = [new RenderProperties(DrawMode.Fill, TexturePainter.letterAtlasTextureName, ColorUtils.defaultTextureCoordinates)];
-        this.#body = new Rectangle(transform, rp);
-        console.log(name, this.#body.scale, this.#body.parent.scale);
 
         //TranslateHandle Settings.
-        transform.origin = this.TL;
-        transform.offset = new Vector2(this.dimensions.x / 2, -Defaults.translateHandle_height / 2);
-        transform.dimensions = new Vector2(this.dimensions.x, Defaults.translateHandle_height);
-        transform.scale = new Vector2(1, 1);
-        transform.scaleInheritanceMap = { x: Scale.Inherit, y: Scale.Local };
-        rp = [RenderProperties.FillProperties(ContainerType.color(containerType))];
-        this.#translateHandle = new Rectangle(transform, rp);
-        
-        //Title Settings.
-        transform.parent = this.#translateHandle;
-        transform.origin = this.#translateHandle.position;
-        transform.offset = Vector2.zero;
-        transform.scaleInheritanceMap = { x: Scale.Inherit, y: Scale.Inherit };
-        this.#nameHandle = new PropertyHandle(transform, false, name); //Inherits TranslateHandle's dimensions
+        {
+            const positioner = { renderPropertiesArray: [] };
+            positioner.transform = new Transform(positioner);
+            positioner.transform.setParent(this);
+            Matrix.translate(positioner.transform.localMatrix, 0, 0.5);
+            rp = [RenderProperties.FillProperties(ContainerType.color(containerType))];
+            this.#translateHandle = new Rectangle(
+                positioner,
+                new Vector2(0, -(Defaults.translateHandle_height / 2)),
+                new Vector2(1, Defaults.translateHandle_height),
+                rp
+            );
+            this.#translateHandle.transform.updateMethod = this.#translateHandle.transform.updateWorldMatrixScaleX;
+        }
 
+        //Title settings
+        {
+            this.#nameHandle = new PropertyHandle(
+                this.#translateHandle,
+                FixedVector2.zero,
+                FixedVector2.one,
+                false,
+                name
+            );
+        }
+    
         //VisibilityHandle Settings.
-        transform.parent = this;
-        transform.origin = this.TR;
-        transform.offset = new Vector2(-20, -Defaults.translateHandle_height / 2);
-        transform.dimensions = new Vector2(Defaults.visibilityHandle_size, Defaults.visibilityHandle_size);
-        transform.scale = FixedVector2.one;
-        transform.scaleInheritanceMap = { x: Scale.Local, y: Scale.Local };
-        rp = [RenderProperties.FillProperties(Style.container_visibility_fill)];
-        this.#visibilityHandle = new Rectangle(transform, rp);
+        {
+            const positioner = { renderPropertiesArray: [] };
+            positioner.transform = new Transform(positioner);
+            positioner.transform.setParent(this.#translateHandle);
+            Matrix.translate(positioner.transform.localMatrix, 0.5, 0);
+            rp = [RenderProperties.FillProperties(Style.container_visibility_fill)];
+            this.#visibilityHandle = new Rectangle(
+                positioner, 
+                new Vector2(-20, 0),
+                new Vector2(Defaults.visibilityHandle_size, Defaults.visibilityHandle_size),
+                rp
+            );
+            this.#visibilityHandle.transform.updateMethod = this.#visibilityHandle.transform.updateWorldMatrixIgnoreScale;
+        }
 
         //ResizeHandles Settings.
-        this.#resizeHandles = [];
-        transform.offset = Vector2.zero;
-        transform.dimensions = new Vector2(Defaults.resizeHandle_size, Defaults.resizeHandle_size);
-        transform.scale = new Vector2(1, 1);
-        transform.scaleInheritanceMap = { x: Scale.Local, y: Scale.Local };
-        rp = [
-            RenderProperties.FillProperties(Style.container_resize_fill, 1),
-            RenderProperties.OutlineProperties(Style.container_resize_outline, 1)
-        ];
-        transform.origin = this.TL;
-        this.#resizeHandles[Hitbox.resizeTL - 1] = new Rectangle(transform, rp);
-        this.#resizeHandles[Hitbox.resizeTL - 1].Hide();
-        transform.origin = this.TR;
-        this.#resizeHandles[Hitbox.resizeTR - 1] = new Rectangle(transform, rp);
-        this.#resizeHandles[Hitbox.resizeTR - 1].Hide();
-        transform.origin = this.BR;
-        this.#resizeHandles[Hitbox.resizeBR - 1] = new Rectangle(transform, rp);
-        this.#resizeHandles[Hitbox.resizeBR - 1].Hide();
-        transform.origin = this.BL;
-        this.#resizeHandles[Hitbox.resizeBL - 1] = new Rectangle(transform, rp);
-        this.#resizeHandles[Hitbox.resizeBL - 1].Hide();
+        {
+            this.#resizeHandles = [];
+            rp = [
+                RenderProperties.FillProperties(Style.container_resize_fill, 1),
+                RenderProperties.OutlineProperties(Style.container_resize_outline, 1)
+            ];
 
+            let positioner = { renderPropertiesArray: [] };
+            positioner.transform = new Transform(positioner);
+            positioner.transform.setParent(this);
+            Matrix.translate(positioner.transform.localMatrix, -0.5, 0.5);
+            this.#resizeHandles[Hitbox.resizeTL - 1] = new Rectangle(
+                positioner,
+                new Vector2(Defaults.resizeHandle_size / 2, -Defaults.resizeHandle_size / 2),
+                new Vector2(Defaults.resizeHandle_size, Defaults.resizeHandle_size),
+                rp
+            );
+            this.#resizeHandles[Hitbox.resizeTL - 1].transform.updateMethod = this.#resizeHandles[Hitbox.resizeTL - 1].transform.updateWorldMatrixIgnoreScale;
+            this.#resizeHandles[Hitbox.resizeTL - 1].Hide();
+
+            positioner = { renderPropertiesArray: [] };
+            positioner.transform = new Transform(positioner);
+            positioner.transform.setParent(this);
+            Matrix.translate(positioner.transform.localMatrix, 0.5, 0.5);
+            this.#resizeHandles[Hitbox.resizeTR - 1] = new Rectangle(
+                positioner,
+                new Vector2(-Defaults.resizeHandle_size / 2, -Defaults.resizeHandle_size / 2),
+                new Vector2(Defaults.resizeHandle_size, Defaults.resizeHandle_size),
+                rp
+            );
+            this.#resizeHandles[Hitbox.resizeTR - 1].transform.updateMethod = this.#resizeHandles[Hitbox.resizeTR - 1].transform.updateWorldMatrixIgnoreScale;
+            this.#resizeHandles[Hitbox.resizeTR - 1].Hide();
+
+            positioner = { renderPropertiesArray: [] };
+            positioner.transform = new Transform(positioner);
+            positioner.transform.setParent(this);
+            Matrix.translate(positioner.transform.localMatrix, 0.5, -0.5);
+            this.#resizeHandles[Hitbox.resizeBR - 1] = new Rectangle(
+                positioner,
+                new Vector2(-Defaults.resizeHandle_size / 2, Defaults.resizeHandle_size / 2),
+                new Vector2(Defaults.resizeHandle_size, Defaults.resizeHandle_size),
+                rp
+            );
+            this.#resizeHandles[Hitbox.resizeBR - 1].transform.updateMethod = this.#resizeHandles[Hitbox.resizeBR - 1].transform.updateWorldMatrixIgnoreScale;
+            this.#resizeHandles[Hitbox.resizeBR - 1].Hide();
+
+            positioner = { renderPropertiesArray: [] };
+            positioner.transform = new Transform(positioner);
+            positioner.transform.setParent(this);
+            Matrix.translate(positioner.transform.localMatrix, -0.5, -0.5);
+            this.#resizeHandles[Hitbox.resizeBL - 1] = new Rectangle(
+                positioner,
+                new Vector2(Defaults.resizeHandle_size / 2, Defaults.resizeHandle_size / 2),
+                new Vector2(Defaults.resizeHandle_size, Defaults.resizeHandle_size),
+                rp
+            );
+            this.#resizeHandles[Hitbox.resizeBL - 1].transform.updateMethod = this.#resizeHandles[Hitbox.resizeBL - 1].transform.updateWorldMatrixIgnoreScale;
+            this.#resizeHandles[Hitbox.resizeBL - 1].Hide();
+        }
+        
         //Bounding Box - used for Collisions
-        transform.origin = this.position;
-        transform.dimensions = new Vector2(Math.abs(pos2.x - pos1.x), Math.abs(pos2.y - pos1.y));
-        transform.scale = new Vector2(1 + (Defaults.resizeHandle_size / transform.dimensions.x), 1 + (Defaults.resizeHandle_size / transform.dimensions.y));
-        transform.scaleInheritanceMap = { x: Scale.Default, y: Scale.Default };
-        rp = [RenderProperties.OutlineProperties(Color.pink)];
-        this.#boundingBox = new Rectangle(transform, rp);
-        //this.#boundingBox.Hide();
-
+        {
+            rp = [
+                RenderProperties.OutlineProperties(Color.pink, 10)
+            ];
+            this.#boundingBox = new Rectangle(this, FixedVector2.zero, FixedVector2.one, rp);
+            //this.#boundingBox.Hide();
+        }
         
         this.#containerType = containerType;
 
+        //A reference point from where to position the VariableHandles
+        this.#variableReferenceOrigin = { renderPropertiesArray: [] };
+        this.#variableReferenceOrigin.transform = new Transform(this.#variableReferenceOrigin);
+        {
+            const positioner = { renderPropertiesArray: [] };
+            positioner.transform = new Transform(positioner);
+            positioner.transform.setParent(this.#translateHandle);
+            Matrix.translate(positioner.transform.localMatrix, 0, -0.5);
+            this.#variableReferenceOrigin.transform.setParent(positioner);
+        }
+
         //A reference point from where to position the MethodHandles
-        this.#methodReferenceOrigin = new Vertex(this.#body.TL, Vector2.zero);
+        this.#methodReferenceOrigin = { renderPropertiesArray: [] };
+        this.#methodReferenceOrigin.transform = new Transform(this.#methodReferenceOrigin);
+        this.#methodReferenceOrigin.transform.setParent(this.#variableReferenceOrigin);
 
         this.#BuildObjectDataArray();
         this.#BuildCollisionDataArray();
     }
 
+    Translate(pos){
+        Matrix.translate(this.transform.localMatrix, pos.x, pos.y);
+    }
+
+    Scale(scale){
+        Matrix.scale(this.transform.localMatrix, scale.x, scale.y);
+    }
+
     //Array referencing the parent object and children objects. Used for rendering.
     #BuildObjectDataArray(){
         this.#objectData.push(this);
-        this.#objectData.push(this.#body);
         this.#objectData.push(this.#translateHandle);
         this.#objectData = this.#objectData.concat(this.#nameHandle.objectData);
         this.#objectData.push(this.#visibilityHandle);
@@ -213,7 +271,7 @@ class Container extends Rectangle {
 
         this.#colliders[i-1].push(this.#boundingBox);
 
-        this.#colliders[this.#body.renderPropertiesArray[0].zIndex].push(this.#body);
+        //this.#colliders[this.#body.renderPropertiesArray[0].zIndex].push(this.#body);
         this.#colliders[this.#translateHandle.renderPropertiesArray[0].zIndex].push(this.#translateHandle);
         this.#colliders[this.#visibilityHandle.renderPropertiesArray[0].zIndex].push(this.#visibilityHandle);
         this.#colliders[this.#resizeHandles[0].renderPropertiesArray[0].zIndex].push(this.#resizeHandles[0]);
@@ -221,7 +279,7 @@ class Container extends Rectangle {
         this.#colliders[this.#resizeHandles[2].renderPropertiesArray[0].zIndex].push(this.#resizeHandles[2]);
         this.#colliders[this.#resizeHandles[3].renderPropertiesArray[0].zIndex].push(this.#resizeHandles[3]);
 
-        this.#colliderTypes[this.#body.renderPropertiesArray[0].zIndex].push(Hitbox.body);
+        //this.#colliderTypes[this.#body.renderPropertiesArray[0].zIndex].push(Hitbox.body);
         this.#colliderTypes[this.#translateHandle.renderPropertiesArray[0].zIndex].push(Hitbox.translate);
         this.#colliderTypes[this.#visibilityHandle.renderPropertiesArray[0].zIndex].push(Hitbox.visibility);
         this.#colliderTypes[this.#resizeHandles[0].renderPropertiesArray[0].zIndex].push(Hitbox.resizeTL);
@@ -240,15 +298,33 @@ class Container extends Rectangle {
         array.push(name);
 
         //Create a new Property instance
-        let transform = new Transform();
-        transform.parent = this;
-        transform.origin = origin;
-        transform.offset = new Vector2(Defaults.container_width / 2, -Defaults.target_letter_texture_height / 2);
-        transform.dimensions = new Vector2(Defaults.container_width, Defaults.target_letter_texture_height);
-        transform.scale = new Vector2(1, 1);
-        transform.scaleInheritanceMap = { x: Scale.Inherit, y: Scale.Local };
-        let handle = new PropertyHandle(transform, isMethod, label);
+        let parent = handleArray[handleArray.length - 1];
+        let offset = new Vector2(0, -Defaults.target_letter_texture_height);
+        let size = new Vector2(1, Defaults.target_letter_texture_height);
+        if(isMethod && handleArray.length == 0){
+            parent = this.#methodReferenceOrigin;
+            //size.y = 1;
+        }
+        if(!isMethod && handleArray.length == 0){
+            parent = this.#variableReferenceOrigin;
+            offset.y /= 2;
+            //size.y = 1;
+        }
+        let handle = new PropertyHandle(
+            parent,
+            offset, 
+            size,
+            isMethod,
+            label
+        );
+        if(parent == this.#variableReferenceOrigin || parent == this.#methodReferenceOrigin){
+            handle.transform.updateMethod = handle.transform.updateWorldMatrixScaleX;
+        }
         handleArray.push(handle);
+
+        if(!isMethod){
+            this.#methodReferenceOrigin.transform.setParent(handle);
+        }
 
         //Add the newly created Property to the renderloop (this.#objectData) and upload its collision data
         this.#objectData = this.#objectData.concat(handle.objectData);
@@ -260,16 +336,17 @@ class Container extends Rectangle {
         if(propertyWidth > this.#biggestTextureWidth){
             this.#biggestTextureWidth = ~~propertyWidth + 1;
         }
-        let newX = this.TL.x + this.#biggestTextureWidth;
-        let newY = (this.#methodHandles.length > 0) ? this.#methodHandles[this.#methodHandles.length - 1].BR.y : this.#variableHandles[this.#variableHandles.length - 1].BR.y;
+        let newX = 10 + this.#biggestTextureWidth;
+        //let newY = (this.#methodHandles.length > 0) ? this.#methodHandles[this.#methodHandles.length - 1].BR.y : this.#variableHandles[this.#variableHandles.length - 1].BR.y;
+        let newY = 10;
 
         this.Resize(this.TL, new Vector2(newX, newY));
     }
 
     AddVariable(name, label){
-        const origin = (this.#variables.length == 0) ? this.#body.TL : this.#variableHandles[this.#variableHandles.length - 1].BL;
+        //const origin = (this.#variables.length == 0) ? this.#body.TL : this.#variableHandles[this.#variableHandles.length - 1].BL;
+        const origin = new Vector2(10, 10);
         this.#AddProperty(this.#variables, this.#variableHandles, name, label, origin, false);
-        this.#methodReferenceOrigin.Move(new Vector2(0, -this.#variables.length * Defaults.target_letter_texture_height));
     }
 
     AddMethod(name, label){
@@ -310,34 +387,43 @@ class PropertyHandle extends Rectangle {
         return [this, this.#socketIn, this.#socketOut].concat(this.#textMesh.objectData);
     }
 
-    constructor(transform, isMethod, text){
-        transform.scale = new Vertex(new Vector2(0, 1), transform.parent.scale, new Vector2(1, 0));
+    constructor(parent, offset, scale, isMethod, text){
         let rp = (isMethod) ? [RenderProperties.FillProperties(Color.darken)] : [RenderProperties.FillProperties(Color.transparent)];
-        super(transform, rp);
+        super(parent, offset, scale, rp);
+        this.transform.updateMethod = this.transform.updateWorldMatrixScaleX;
         
-        transform.parent = this;
-        transform.offset = new Vector2(0, -Defaults.target_letter_texture_height / 2);
-        transform.dimensions = new Vector2(Defaults.resizeHandle_size, Defaults.resizeHandle_size);
-        transform.scale = new Vector2(1, 1);
-        transform.scaleInheritanceMap = { x: Scale.Local, y: Scale.Local };
         let childRP = [
             RenderProperties.FillProperties(Color.light, 1),
             RenderProperties.OutlineProperties(Color.pink, 1)
         ];
-        transform.origin = this.TL;
-        this.#socketIn = new Rectangle(transform, childRP);
-        transform.origin = this.TR;
-        this.#socketOut = new Rectangle(transform, childRP);
 
-        transform.offset = new Vector2(Defaults.container_body_margin_left, -Defaults.target_letter_texture_height / 2);
-        transform.origin = this.TL;
-        this.#textMesh = new TextMesh(transform, text, [RenderProperties.FillProperties(Color.transparent)]);
+        {
+            let positioner = { renderPropertiesArray: [] };
+            positioner.transform = new Transform(positioner);
+            positioner.transform.setParent(this);
+            Matrix.translate(positioner.transform.localMatrix, -0.5, 0);
+            this.#socketIn = new Rectangle(positioner, new Vector2(Defaults.resizeHandle_size / 2, 0), new Vector2(Defaults.resizeHandle_size, Defaults.resizeHandle_size), childRP);
+            this.#socketIn.transform.updateMethod = this.#socketIn.transform.updateWorldMatrixIgnoreScale;
+            this.#textMesh = new TextMesh(
+                positioner,
+                text,
+                [RenderProperties.FillProperties(Color.transparent)]
+            );
+
+            positioner = { renderPropertiesArray: [] };
+            positioner.transform = new Transform(positioner);
+            positioner.transform.setParent(this);
+            Matrix.translate(positioner.transform.localMatrix, 0.5, 0);
+            this.#socketOut = new Rectangle(positioner, new Vector2(-Defaults.resizeHandle_size / 2, 0), new Vector2(Defaults.resizeHandle_size, Defaults.resizeHandle_size), childRP);
+            this.#socketOut.transform.updateMethod = this.#socketOut.transform.updateWorldMatrixIgnoreScale;
+        }
     }
 }
 
 class TextMesh extends Rectangle {
     #text;
     #textQuads = [];
+    #leftPositioner;
 
     get text(){
         return this.#text;
@@ -347,31 +433,27 @@ class TextMesh extends Rectangle {
         return [this].concat(this.#textQuads);
     }
 
-    constructor(transform, text, renderPropertiesArray){
-        let width = text.length * Defaults.target_letter_texture_width;
-        let height = Defaults.target_letter_texture_height;
+    constructor(parent, text, renderPropertiesArray){
+        const textMeshWidth = text.length * Defaults.target_letter_texture_width;
+        let offset = new Vector2(Defaults.container_body_margin_left + (textMeshWidth / 2), 0);
+        let scale = new Vector2(textMeshWidth, Defaults.target_letter_texture_height);
 
-        transform.dimensions = new Vector2(width, height);
-        transform.offset = transform.offset.Add(width / 2, 0);
-        transform.scale = FixedVector2.one;
-
-        super(transform, renderPropertiesArray);
+        super(parent, offset, scale, renderPropertiesArray);
+        this.transform.updateMethod = this.transform.updateWorldMatrixIgnoreScale;
+        this.#leftPositioner = { renderPropertiesArray: [] };
+        this.#leftPositioner.transform = new Transform(this.#leftPositioner);
+        this.#leftPositioner.transform.setParent(this);
+        Matrix.translate(this.#leftPositioner.transform.localMatrix, -0.5, 0);
         this.SetText(text);
     }
 
     SetText(text){
         this.#text = text;
-        let transform = new Transform();
-        transform.parent = this;
-        transform.origin = this.TL;
-        transform.offset = new Vector2(Defaults.target_letter_texture_width / 2, -Defaults.target_letter_texture_height / 2);
-        transform.scale = FixedVector2.one;
-        this.#textQuads.push(new LetterQuad(transform, text.charAt(0)));
+        this.#textQuads.push(new LetterQuad(this.#leftPositioner, text.charAt(0)));
         for(let i = 1; i < text.length; i++){
-            transform.origin = this.#textQuads[this.#textQuads.length - 1].position;
-            transform.offset = new Vector2(Defaults.target_letter_texture_width, 0);
+            //transform.offset = new Vector2(Defaults.target_letter_texture_width, 0);
             this.#textQuads.push(new LetterQuad(
-                transform,
+                this.#textQuads[i-1],
                 text.charAt(i)
             ));
         }
@@ -379,25 +461,27 @@ class TextMesh extends Rectangle {
 }
 
 class LetterQuad extends Mesh {
-    #TL;
-    #TR;
-    #BR;
-    #BL;
-
     get shape(){
         return [
-            this.#TL.x, this.#TL.y,
-            this.#TR.x, this.#TR.y,
-            this.#BR.x, this.#BR.y,
-            this.#BL.x, this.#BL.y
-        ]
+            this.transform.worldMatrix[0], this.transform.worldMatrix[1], this.transform.worldMatrix[2],
+            this.transform.worldMatrix[3], this.transform.worldMatrix[4], this.transform.worldMatrix[5],
+            this.transform.worldMatrix[6], this.transform.worldMatrix[7], this.transform.worldMatrix[8]
+        ];
     }
 
-    constructor(transform, letter){
-        super(transform, [RenderProperties.TextureProperties(TexturePainter.letterAtlasTextureName, TexturePainter.TextureCoordinatesFromLetter(letter))]);
-        this.#TL = new Vertex(this.position, new Vector2(-Defaults.target_letter_texture_width / 2, Defaults.target_letter_texture_height / 2));
-        this.#TR = new Vertex(this.position, new Vector2(Defaults.target_letter_texture_width / 2, Defaults.target_letter_texture_height / 2));
-        this.#BR = new Vertex(this.position, new Vector2(Defaults.target_letter_texture_width / 2, -Defaults.target_letter_texture_height / 2));
-        this.#BL = new Vertex(this.position, new Vector2(-Defaults.target_letter_texture_width / 2, -Defaults.target_letter_texture_height / 2));
+    constructor(parent, letter){
+        super(
+            parent,
+            new Vector2(Defaults.target_letter_texture_width, 0),
+            new Vector2(Defaults.target_letter_texture_width, Defaults.target_letter_texture_height),
+            [RenderProperties.TextureProperties(TexturePainter.letterAtlasTextureName, TexturePainter.TextureCoordinatesFromLetter(letter))]
+        );
+        this.transform.updateMethod = this.transform.updateWorldMatrixIgnoreScale;
+    }
+}
+
+class SContainer extends Rectangle {
+    constructor(pos1, pos2, name, containerType = ContainerType.Class){
+        super(SceneMesh, Vector2.zero, Vector2.one, [RenderProperties.FillProperties(Color.pink, 0)]);
     }
 }

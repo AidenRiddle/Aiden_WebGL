@@ -1,29 +1,79 @@
 <html>
     <head>
         <link rel="stylesheet" href="main.css">
-        <script id="vertex" type="x-shader">
-            attribute vec2 a_position;
+        <script id="vertex" type="x-shader">#version 300 es
             uniform mat3 u_matrix;
+            in vec2 a_position;
+            
+            in vec3 a_worldMatrix1;
+            in vec3 a_worldMatrix2;
+            in vec3 a_worldMatrix3;
 
-            attribute vec2 a_texcoord;
-            varying vec2 v_texcoord;
+            in vec4 a_texcoord2Verts1;
+            in vec4 a_texcoord2Verts2;
+            out vec2 v_texcoord;
             
             void main() {
-                vec2 position = (u_matrix * vec3(a_position, 1)).xy;
-              
+                mat3 finalMat;
+                finalMat[0] = a_worldMatrix1;
+                finalMat[1] = a_worldMatrix2;
+                finalMat[2] = a_worldMatrix3;
+                vec3 finalpos = finalMat * vec3(a_position, 1);
+                vec2 position = (u_matrix * finalpos).xy;
+
                 gl_Position = vec4(position, 1, 1);
-                v_texcoord = a_texcoord;
+
+                if(gl_VertexID == 0){ v_texcoord = a_texcoord2Verts1.xy; }
+                if(gl_VertexID == 1){ v_texcoord = a_texcoord2Verts1.zw; }
+                if(gl_VertexID == 2){ v_texcoord = a_texcoord2Verts2.xy; }
+                if(gl_VertexID == 3){ v_texcoord = a_texcoord2Verts2.zw; }
             }
         </script>
-        <script id="fragment" type="x-shader">
+        <script id="vertex_connections" type="x-shader">#version 300 es
+            uniform mat3 u_matrix;
+            uniform vec4 u_texcoord;
+            
+            in vec3 a_worldMatrix1;
+            in vec3 a_worldMatrix2;
+            in vec3 a_worldMatrix3;
+            in vec3 a_worldMatrix4;
+            in vec3 a_worldMatrix5;
+            in vec3 a_worldMatrix6;
+
+            out vec2 v_texcoord;
+            
+            void main() {
+                mat3 finalMat;
+                if(gl_VertexID == 0){
+                    finalMat[0] = a_worldMatrix1;
+                    finalMat[1] = a_worldMatrix2;
+                    finalMat[2] = a_worldMatrix3;
+
+                    v_texcoord = u_texcoord.xy;
+                }else{
+                    finalMat[0] = a_worldMatrix4;
+                    finalMat[1] = a_worldMatrix5;
+                    finalMat[2] = a_worldMatrix6;
+
+                    v_texcoord = u_texcoord.zw;
+                }
+                vec3 finalpos = finalMat * vec3(0, 0, 1);
+                vec2 position = (u_matrix * finalpos).xy;
+
+                gl_Position = vec4(position, 1, 1);
+            }
+        </script>
+        <script id="fragment" type="x-shader">#version 300 es
             precision mediump float;
 
-            varying vec2 v_texcoord;
+            in vec2 v_texcoord;
+            out vec4 fragColor;
 
             uniform sampler2D u_texture;
 
             void main() {
-                gl_FragColor = texture2D(u_texture, v_texcoord);
+                fragColor = texture(u_texture, v_texcoord);
+                //fragColor = vec4(1, 0, 0.5, 1);
             }
         </script>
     </head>
@@ -86,6 +136,7 @@
     <script src="connection.js"></script>
     <script src="JSONDatabase.js"></script>
     <script src="graphics.js"></script>
+    <script src="rgraphics.js"></script>
     <script src="texturePainter.js"></script>
     <script src="input.js"></script>
     <script src="scene.js"></script>

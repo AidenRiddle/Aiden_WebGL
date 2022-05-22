@@ -80,8 +80,10 @@ class TexturePainter {
         const inColor = Color.yellow;
         this.#DrawRectangle(outColor, 1, 1, 0, 0);
         this.#DrawRectangle(inColor, 1, 1, 1, 0);
+        this.#DrawRectangle(Color.purple, 1, 1, 0, 1);
+        this.#DrawRectangle(Color.blue, 1, 1, 1, 1);
 
-        return this.#ctx.getImageData(0, 0, 2, 1);
+        return this.#ctx.getImageData(0, 0, 2, 2);
     }
 
     DrawPrincipalColorTextures = () => {
@@ -144,11 +146,11 @@ class TexturePainter {
         const yMin = colorIndex / colorsLength;
         const yMax = (colorIndex+1) / colorsLength;
 
-        return [
+        return new Float32Array([
             xMin, yMin,
             xMax, yMin,
             xMax, yMax,
             xMin, yMax
-        ];
+        ]);
     }
 }

@@ -94,50 +94,134 @@ class Vertex extends Vector2 {
 }
 
 class Transform {
+    localMatrix = Matrix.identity;
+    worldMatrix = Matrix.identity;
     parent;
-    origin;
-    offset;
+    children = [];
     dimensions;
-    scale = FixedVector2.one;
-    scaleInheritanceMap = { x: Scale.Default, y: Scale.Default };
+    mesh;
+    updateMethod = this.updateWorldMatrixScaleXY;
+
+    get origin(){
+        return {
+            x: worldMatrix[6],
+            y: worldMatrix[7]
+        }
+    }
+
+    constructor(mesh){
+        this.mesh = mesh;
+    }
+    
+    setParent(parent) {
+        // remove us from our parent
+        if (this.parent) {
+            var ndx = this.parent.transform.children.indexOf(this);
+            if (ndx >= 0) {
+                this.parent.transform.children.splice(ndx, 1);
+            }
+        }
+
+        // Add us to our new parent
+        if (parent) {
+            parent.transform.children.push(this);
+        }
+        this.parent = parent;
+    }
+
+    updateWorldMatrix(parentWorldMatrix) {
+        this.updateMethod(parentWorldMatrix);
+    }
+
+    updateWorldMatrixScaleXY(parentWorldMatrix){
+        if (parentWorldMatrix) {
+            Matrix.copy(Matrix.multiply(parentWorldMatrix, this.localMatrix), this.worldMatrix);
+        } else {
+            Matrix.copy(this.localMatrix, this.worldMatrix);
+        }
+
+        var worldMatrix = this.worldMatrix;
+        this.children.forEach(function(child) {
+            child.updateWorldMatrix(worldMatrix);
+        });
+    }
+
+    updateWorldMatrixScaleX(parentWorldMatrix){
+        if (parentWorldMatrix) {
+            let copy = new Array(9);
+            Matrix.copy(parentWorldMatrix, copy);
+            copy[4] = 1;
+            this.worldMatrix = Matrix.multiply(copy, this.localMatrix);
+        } else {
+            Matrix.copy(this.localMatrix, this.worldMatrix);
+        }
+
+        var worldMatrix = this.worldMatrix;
+        this.children.forEach(function(child) {
+            child.updateWorldMatrix(worldMatrix);
+        });
+    }
+
+    updateWorldMatrixScaleY(parentWorldMatrix){
+        if (parentWorldMatrix) {
+            let copy = new Array(9);
+            Matrix.copy(parentWorldMatrix, copy);
+            copy[0] = 1;
+            this.worldMatrix = Matrix.multiply(copy, this.localMatrix);
+        } else {
+            Matrix.copy(this.localMatrix, this.worldMatrix);
+        }
+
+        var worldMatrix = this.worldMatrix;
+        this.children.forEach(function(child) {
+            child.updateWorldMatrix(worldMatrix);
+        });
+    }
+
+    updateWorldMatrixIgnoreScale(parentWorldMatrix){
+        if (parentWorldMatrix) {
+            Matrix.copy(parentWorldMatrix, this.worldMatrix);
+            Matrix.setScale(this.worldMatrix, 1, 1);
+            this.worldMatrix = Matrix.multiply(this.worldMatrix, this.localMatrix);
+        } else {
+            Matrix.copy(this.localMatrix, this.worldMatrix);
+        }
+
+        var worldMatrix = this.worldMatrix;
+        this.children.forEach(function(child) {
+            child.updateWorldMatrix(worldMatrix);
+        });
+    }
 }
 
 class Mesh extends Renderer {
-    #offset;
-    
-    #parent;
-    get parent(){
-        return this.#parent;
-    }
-
+    #transform = new Transform(this);
     #scaleInheritanceMap;
-    #localScale;
 
-    #scale;
-    get scale(){
-        return this.#scale;
+    get transform(){
+        return this.#transform;
     }
 
-    #position;
     get position(){
-        return this.#position;
+        return {
+            x: this.#transform.worldMatrix[6],
+            y: this.#transform.worldMatrix[7]
+        }
     }
 
-    constructor(transform, renderPropertiesArray){
+    constructor(parent, offset, scale, renderPropertiesArray){
         super(renderPropertiesArray);
-        this.#parent = transform.parent;
-        this.#offset = transform.offset;
+        this.#transform.setParent(parent);
+        Matrix.translate(this.#transform.localMatrix, offset.x, offset.y);
+        Matrix.scale(this.#transform.localMatrix, scale.x, scale.y);
         
-        this.#scaleInheritanceMap = transform.scaleInheritanceMap;
-        this.#localScale = transform.scale;
-        this.#scale = this.#CalculateScale();
-
-        this.#position = this.#CalculatePosition(transform.origin);
+        //this.#scaleInheritanceMap = transform.scaleInheritanceMap;
+        //this.#scale = this.#CalculateScale();
     }
 
     #CalculatePosition(origin){
         //return (this.#parent instanceof SceneMesh) ? new Vertex(origin, this.#offset, this.#parent.scale) : new Vertex(origin, this.#offset, this.#scale);
-        return new Vertex(origin, this.#offset, this.#parent.scale);
+        //return new Vertex(origin, this.#offset, this.#parent.scale);
     }
 
     #CalculateScale(){
@@ -157,27 +241,16 @@ class Mesh extends Renderer {
 
         let parentScale;
         if(parentMultiplier.x == 0 && parentMultiplier.y == 0){ parentScale = FixedVector2.one; }
-        else { parentScale = new Vertex(parentOffset, this.#parent.scale, parentMultiplier); }
+        else { parentScale = new Vertex(parentOffset, this.#transform.parent.scale, parentMultiplier); }
 
         let localScale;
         if(localMultiplier.x == 0 && localMultiplier.y == 0){ localScale = FixedVector2.one; }
-        else { localScale = new Vertex(localOffset, this.#localScale, localMultiplier); }
+        else { localScale = new Vertex(localOffset, this.#transform, localMultiplier); }
         
         return new Vertex(FixedVector2.zero, parentScale, localScale);
     }
 
-    ChangeParent(parent, origin){
-        if( ! parent instanceof Mesh) throw new Error("Not a valid parent.");
-        this.#parent = parent;
-        this.#scale = this.#CalculateScale();
-        this.#position = this.#CalculatePosition(origin);
-    }
-
-    Translate(destination){
-        this.#position.Move(destination);
-    }
-
-    Scale(...values){
+    /*Scale(...values){
         if(values[0] instanceof Vector2){
             if(values.length > 1) throw new Error("too many arguments");
             this.#localScale.x = values[0].x;
@@ -192,75 +265,51 @@ class Mesh extends Renderer {
         }
         this.#localScale.x = values[0];
         this.#localScale.y = values[0];
-    }
+    }*/
 }
 
 class Rectangle extends Mesh {
-    #measurements;
     #dimensions;
     get dimensions(){
         return this.#dimensions;
     }
 
-    #TL;
     get TL(){
-        return this.#TL;
+        return new Vector2(-1, 1);
     }
 
-    #TR;
     get TR(){
-        return this.#TR;
+        return new Vector2(1, 1);
     }
 
-    #BR;
     get BR(){
-        return this.#BR;
+        return new Vector2(1, -1);
     }
 
-    #BL;
     get BL(){
-        return this.#BL;
+        return new Vector2(-1, -1);
     }
 
     get shape(){
-        return [
-            this.#TL.x, this.#TL.y, 
-            this.#TR.x, this.#TR.y,
-            this.#BR.x, this.#BR.y,
-            this.#BL.x, this.#BL.y
-        ]
+        return this.transform.worldMatrix;
     }
 
-    constructor(transform, renderPropertiesArray){
+    constructor(parent, offset, scale, renderPropertiesArray){
         if( ! renderPropertiesArray) throw new Error();
-        super(transform, renderPropertiesArray);
-        this.#measurements = new Vector2(transform.dimensions.x, transform.dimensions.y);
-        this.#dimensions = new Vertex(Vector2.zero, this.#measurements, this.scale);
-        const x = this.#measurements.x / 2;
-        const y = this.#measurements.y / 2;
-
-        this.#TL = new Vertex(this.position, new Vector2(-x, y), this.scale);
-        this.#TR = new Vertex(this.position, new Vector2(x, y), this.scale);
-        this.#BR = new Vertex(this.position, new Vector2(x, -y), this.scale);
-        this.#BL = new Vertex(this.position, new Vector2(-x, -y), this.scale);
+        super(parent, offset, scale, renderPropertiesArray);
+        this.#dimensions = new Vertex(Vector2.zero, this.scale, this.scale);
     }
 
     Resize(vecA, vecB){
-        let scaleX = Math.abs(vecB.x - vecA.x) / this.#measurements.x;
-        let scaleY = Math.abs(vecB.y - vecA.y) / this.#measurements.y;
-        this.Scale(scaleX, scaleY);
-        this.Translate(new Vector2((vecA.x + vecB.x) / 2, (vecA.y + vecB.y) / 2));
+        //let scaleX = Math.abs(vecB.x - vecA.x) / this.scale.x;
+        //let scaleY = Math.abs(vecB.y - vecA.y) / this.scale.y;
+        let scaleX = 1;
+        let scaleY = 1;
+        //this.Scale(scaleX, scaleY);
+        //this.Translate(new Vector2((vecA.x + vecB.x) / 2, (vecA.y + vecB.y) / 2));
     }
 }
 
 class SceneMesh {
-    static scene = new SceneMesh();
-
-    static get origin(){
-        return FixedVector2.zero;
-    }
-
-    static get scale(){
-        return FixedVector2.one;
-    }
+    static transform = new Transform();
 }

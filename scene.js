@@ -262,6 +262,7 @@ class Scene {
     #GetSocket(containerName, targetName, isSocketIn){
         const container = this.FindContainer(containerName);
         if(container === null) throw new Error("Container name does not exist");
+        container.transform.updateWorldMatrix();
 
         if(targetName == "" || targetName === undefined){
             if(isSocketIn) return container.nameHandle.socketIn;
@@ -351,7 +352,7 @@ class Scene {
         //If the database request succeeds, create a new container in the scene.
         this.#previewConnectionRendererEnabled = false;      //Deactivate the rendering of the preview.
         let pos2 = pos.Add(Defaults.container_width, -Defaults.container_height);
-        let newContainer = new Container(pos, pos2, name, type);
+        let newContainer = new SContainer(pos, pos2, name, type);
         this.#AddObjectToScene(newContainer);
         return newContainer;
     }
