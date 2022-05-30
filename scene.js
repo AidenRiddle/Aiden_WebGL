@@ -209,7 +209,7 @@ class Scene {
         for(let i = colliders.length - 2; i >= 0; i--){
             for(let j = colliders[i].length - 1; j >= 0; j--){   //The order doesn't matter in the inner loop because the objects within this array all have the same ZIndex
                 const collider = colliders[i][j];
-                if(VecMath.CheckRectangle(coordinates, collider)){ return { collider : collider, parent : collider.parent, hitbox : container.collisionData.hitboxes[i][j] };}
+                if(VecMath.CheckRectangle(coordinates, collider)){ return { collider : collider, parent : container, hitbox : container.collisionData.hitboxes[i][j] };}
             }
         }
         return null;
@@ -352,7 +352,7 @@ class Scene {
         //If the database request succeeds, create a new container in the scene.
         this.#previewConnectionRendererEnabled = false;      //Deactivate the rendering of the preview.
         let pos2 = pos.Add(Defaults.container_width, -Defaults.container_height);
-        let newContainer = new SContainer(pos, pos2, name, type);
+        let newContainer = new Container(pos, pos2, name, type);
         this.#AddObjectToScene(newContainer);
         return newContainer;
     }
@@ -396,11 +396,13 @@ class Scene {
 
     ResizeContainer(container, referencePoint, finalPos){
         container.Resize(referencePoint, finalPos);
+        this.#gl.MakeDirty(container);
         this.Refresh();
     }
 
     TranslateContainer(container, finalPos){
         container.Translate(finalPos);
+        this.#gl.MakeDirty(container);
         this.Refresh();
     }
 

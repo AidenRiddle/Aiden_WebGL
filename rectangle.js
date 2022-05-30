@@ -103,10 +103,11 @@ class Transform {
     updateMethod = this.updateWorldMatrixScaleXY;
 
     get origin(){
-        return {
-            x: worldMatrix[6],
-            y: worldMatrix[7]
-        }
+        return new Vector2(this.worldMatrix[6], this.worldMatrix[7]);
+    }
+
+    get localScale(){
+        return new Vector2(this.localMatrix[0], this.localMatrix[4]);
     }
 
     constructor(mesh){
@@ -192,6 +193,14 @@ class Transform {
             child.updateWorldMatrix(worldMatrix);
         });
     }
+
+    scale(x, y){
+        Matrix.setScale(this.localMatrix, x, y);
+    }
+
+    translate(x, y){
+        Matrix.translate(this.localMatrix, x, y);
+    }
 }
 
 class Mesh extends Renderer {
@@ -203,10 +212,7 @@ class Mesh extends Renderer {
     }
 
     get position(){
-        return {
-            x: this.#transform.worldMatrix[6],
-            y: this.#transform.worldMatrix[7]
-        }
+        return this.#transform.origin;
     }
 
     constructor(parent, offset, scale, renderPropertiesArray){
@@ -214,80 +220,41 @@ class Mesh extends Renderer {
         this.#transform.setParent(parent);
         Matrix.translate(this.#transform.localMatrix, offset.x, offset.y);
         Matrix.scale(this.#transform.localMatrix, scale.x, scale.y);
-        
-        //this.#scaleInheritanceMap = transform.scaleInheritanceMap;
-        //this.#scale = this.#CalculateScale();
     }
 
-    #CalculatePosition(origin){
-        //return (this.#parent instanceof SceneMesh) ? new Vertex(origin, this.#offset, this.#parent.scale) : new Vertex(origin, this.#offset, this.#scale);
-        //return new Vertex(origin, this.#offset, this.#parent.scale);
+    scale(x, y){
+        this.#transform.scale(x, y);
     }
 
-    #CalculateScale(){
-        let parentMultiplier = new Vector2(0, 0);
-        let localMultiplier = new Vector2(0, 0);
-        let parentOffset = new Vector2(0, 0);
-        let localOffset = new Vector2(0, 0);
-
-
-        if(this.#scaleInheritanceMap.x == Scale.Default)        { parentMultiplier.x = 1; localMultiplier.x = 1; }
-        else if(this.#scaleInheritanceMap.x == Scale.Inherit)   { parentMultiplier.x = 1; localOffset.x = 1; }
-        else if(this.#scaleInheritanceMap.x == Scale.Local)     { localMultiplier.x = 1; parentOffset.x = 1;}
-        
-        if(this.#scaleInheritanceMap.y == Scale.Default)        { parentMultiplier.y = 1; localMultiplier.y = 1; }
-        else if(this.#scaleInheritanceMap.y == Scale.Inherit)   { parentMultiplier.y = 1; localOffset.y = 1; }
-        else if(this.#scaleInheritanceMap.y == Scale.Local)     { localMultiplier.y = 1; parentOffset.y = 1; }
-
-        let parentScale;
-        if(parentMultiplier.x == 0 && parentMultiplier.y == 0){ parentScale = FixedVector2.one; }
-        else { parentScale = new Vertex(parentOffset, this.#transform.parent.scale, parentMultiplier); }
-
-        let localScale;
-        if(localMultiplier.x == 0 && localMultiplier.y == 0){ localScale = FixedVector2.one; }
-        else { localScale = new Vertex(localOffset, this.#transform, localMultiplier); }
-        
-        return new Vertex(FixedVector2.zero, parentScale, localScale);
+    translate(x, y){
+        const pos = this.position;
+        this.#transform.translate(pos.x + x, pos.y + y);
     }
 
-    /*Scale(...values){
-        if(values[0] instanceof Vector2){
-            if(values.length > 1) throw new Error("too many arguments");
-            this.#localScale.x = values[0].x;
-            this.#localScale.y = values[0].y;
-            return;
-        }
-        if(values.length > 2) throw new Error("too many arguments");
-        if(values.length == 2){
-            this.#localScale.x = values[0];
-            this.#localScale.y = values[1];
-            return;
-        }
-        this.#localScale.x = values[0];
-        this.#localScale.y = values[0];
-    }*/
+    moveTo(x, y){
+        this.#transform.translate(x, y);
+    }
 }
 
 class Rectangle extends Mesh {
-    #dimensions;
     get dimensions(){
-        return this.#dimensions;
+        return new Vector2(this.transform.worldMatrix[0], this.transform.worldMatrix[4]);
     }
 
     get TL(){
-        return new Vector2(-1, 1);
+        return new Vector2(-0.5, 0.5);
     }
 
     get TR(){
-        return new Vector2(1, 1);
+        return new Vector2(0.5, 0.5);
     }
 
     get BR(){
-        return new Vector2(1, -1);
+        return new Vector2(0.5, -0.5);
     }
 
     get BL(){
-        return new Vector2(-1, -1);
+        return new Vector2(-0.5, -0.5);
     }
 
     get shape(){
@@ -297,16 +264,20 @@ class Rectangle extends Mesh {
     constructor(parent, offset, scale, renderPropertiesArray){
         if( ! renderPropertiesArray) throw new Error();
         super(parent, offset, scale, renderPropertiesArray);
-        this.#dimensions = new Vertex(Vector2.zero, this.scale, this.scale);
     }
 
     Resize(vecA, vecB){
-        //let scaleX = Math.abs(vecB.x - vecA.x) / this.scale.x;
-        //let scaleY = Math.abs(vecB.y - vecA.y) / this.scale.y;
-        let scaleX = 1;
-        let scaleY = 1;
-        //this.Scale(scaleX, scaleY);
-        //this.Translate(new Vector2((vecA.x + vecB.x) / 2, (vecA.y + vecB.y) / 2));
+        let newScale = [
+            Math.abs(vecB.x - vecA.x),
+            Math.abs(vecB.y - vecA.y)
+        ]
+        this.scale(newScale[0], newScale[1]);
+
+        let newPos = [
+            (vecA.x + vecB.x) / 2, 
+            (vecA.y + vecB.y) / 2
+        ]
+        this.moveTo(newPos[0], newPos[1]);
     }
 }
 

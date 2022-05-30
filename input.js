@@ -131,7 +131,7 @@ class InputManager {
             case InputSystem.Create: this.#CreateHandler.type = toolIndex; break;
             case InputSystem.Transform: this.#TransformHandler.type = toolIndex; break;
         }
-        this.#OnToolChanged(targetInputSystem, toolIndex);
+        //this.#OnToolChanged(targetInputSystem, toolIndex);
     }
     
     #OnToolChanged(inputSystem, tool){
@@ -385,10 +385,10 @@ class TransformHandler extends InputActions {
         if(this.type == Tools.transform_scale){
             this.#isResizing = true;
             switch(this.#selectedRectangle.hitbox){
-                case Hitbox.resizeTL: this.#distanceFromOrigin = new Vector2(this.#selectedRectangle.parent.BR.x, this.#selectedRectangle.parent.BR.y); return;
-                case Hitbox.resizeTR: this.#distanceFromOrigin = new Vector2(this.#selectedRectangle.parent.BL.x, this.#selectedRectangle.parent.BL.y); return;
-                case Hitbox.resizeBR: this.#distanceFromOrigin = new Vector2(this.#selectedRectangle.parent.TL.x, this.#selectedRectangle.parent.TL.y); return;
-                case Hitbox.resizeBL: this.#distanceFromOrigin = new Vector2(this.#selectedRectangle.parent.TR.x, this.#selectedRectangle.parent.TR.y); return;
+                case Hitbox.resizeTL: this.#distanceFromOrigin = this.#selectedRectangle.parent.BR.Multiply(this.#selectedRectangle.parent.transform.localScale).Add(this.#selectedRectangle.parent.transform.origin); return;
+                case Hitbox.resizeTR: this.#distanceFromOrigin = this.#selectedRectangle.parent.BL.Multiply(this.#selectedRectangle.parent.transform.localScale).Add(this.#selectedRectangle.parent.transform.origin); return;
+                case Hitbox.resizeBR: this.#distanceFromOrigin = this.#selectedRectangle.parent.TL.Multiply(this.#selectedRectangle.parent.transform.localScale).Add(this.#selectedRectangle.parent.transform.origin); return;
+                case Hitbox.resizeBL: this.#distanceFromOrigin = this.#selectedRectangle.parent.TR.Multiply(this.#selectedRectangle.parent.transform.localScale).Add(this.#selectedRectangle.parent.transform.origin); return;
             }
             this.#isResizing = false;
         }

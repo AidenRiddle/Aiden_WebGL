@@ -100,7 +100,7 @@ class Container extends Rectangle {
             RenderProperties.FillProperties(Color.light,-1),
             RenderProperties.OutlineProperties(ContainerType.color(containerType), 1)
         ];
-        super(SceneMesh, new Vector2(pos2.x - pos1.x, pos2.y - pos1.y), new Vector2(Defaults.container_width, Defaults.container_height), rp);
+        super(SceneMesh, new Vector2(pos1.x, pos1.y), new Vector2(Defaults.container_width, Defaults.container_height), rp);
 
 
         //TranslateHandle Settings.
@@ -288,11 +288,6 @@ class Container extends Rectangle {
         this.#colliderTypes[this.#resizeHandles[3].renderPropertiesArray[0].zIndex].push(Hitbox.resizeBL);
     }
 
-    Resize(vecA, vecB){
-        super.Resize(vecA, vecB);
-        //this.#boundingBox.Scale(this.scale.x, this.scale.y);
-    }
-
     #AddProperty(array, handleArray, name, label, origin, isMethod){
         //Store the property key
         array.push(name);
@@ -303,12 +298,10 @@ class Container extends Rectangle {
         let size = new Vector2(1, Defaults.target_letter_texture_height);
         if(isMethod && handleArray.length == 0){
             parent = this.#methodReferenceOrigin;
-            //size.y = 1;
         }
         if(!isMethod && handleArray.length == 0){
             parent = this.#variableReferenceOrigin;
             offset.y /= 2;
-            //size.y = 1;
         }
         let handle = new PropertyHandle(
             parent,
@@ -337,10 +330,9 @@ class Container extends Rectangle {
             this.#biggestTextureWidth = ~~propertyWidth + 1;
         }
         let newX = 10 + this.#biggestTextureWidth;
-        //let newY = (this.#methodHandles.length > 0) ? this.#methodHandles[this.#methodHandles.length - 1].BR.y : this.#variableHandles[this.#variableHandles.length - 1].BR.y;
-        let newY = 10;
+        let newY = (this.#methodHandles.length > 0) ? this.#methodHandles[this.#methodHandles.length - 1].BR.y : this.#variableHandles[this.#variableHandles.length - 1].BR.y;
 
-        this.Resize(this.TL, new Vector2(newX, newY));
+        //this.Resize(this.TL, new Vector2(newX, newY));
     }
 
     AddVariable(name, label){
@@ -477,11 +469,5 @@ class LetterQuad extends Mesh {
             [RenderProperties.TextureProperties(TexturePainter.letterAtlasTextureName, TexturePainter.TextureCoordinatesFromLetter(letter))]
         );
         this.transform.updateMethod = this.transform.updateWorldMatrixIgnoreScale;
-    }
-}
-
-class SContainer extends Rectangle {
-    constructor(pos1, pos2, name, containerType = ContainerType.Class){
-        super(SceneMesh, Vector2.zero, Vector2.one, [RenderProperties.FillProperties(Color.pink, 0)]);
     }
 }

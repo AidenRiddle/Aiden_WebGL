@@ -27,11 +27,16 @@ class RGraphics {
     
     #renderPropertiesBatch = [];
     #BatchMapIndex = {
+        indexFinder: {},
         indexMap: {},
         mapContainer(bufferMap, container){
+            for(let i = 0, k = Object.keys(this.indexMap); i < k.length; i++){
+                this.indexFinder[k[i]] = -1;
+            }
             container.transform.updateWorldMatrix();
             this.mapMesh(bufferMap, container, container.name);
             this.mapTransformChildren(bufferMap, container.transform.children, container.name);
+            this.indexFinder = {};
         },
         mapConnection(bufferMap, connection){
             if(!connection) return;
@@ -48,6 +53,7 @@ class RGraphics {
                 if(! (bufferMap.batch_ids.includes(rpAsID))){
                     bufferMap.createNewBatch(rpAsID);
                     this.indexMap[rpAsID] = {};
+                    this.indexFinder[rpAsID] = -1;
                 }
                 if(this.indexMap[rpAsID][containerID] === undefined){
                     this.indexMap[rpAsID][containerID] = {
@@ -55,10 +61,16 @@ class RGraphics {
                         matrixIndices: []
                     }
                 }
-                this.indexMap[rpAsID][containerID].textureIndices.push(bufferMap.batches[rpAsID].texcoordBufferlength);
-                this.indexMap[rpAsID][containerID].matrixIndices.push(bufferMap.batches[rpAsID].matrixBufferlength);
-                bufferMap.addTexCoordsToBuffer(rpAsID, rp.textureCoordinates);
-                bufferMap.addMatrixToBuffer(rpAsID, mesh.transform.worldMatrix);
+                this.indexFinder[rpAsID]++;
+                if(this.indexFinder[rpAsID] >= this.indexMap[rpAsID][containerID].textureIndices.length){
+                    this.indexMap[rpAsID][containerID].textureIndices.push(bufferMap.batches[rpAsID].texcoordBufferlength);
+                    this.indexMap[rpAsID][containerID].matrixIndices.push(bufferMap.batches[rpAsID].matrixBufferlength);
+                    bufferMap.addTexCoordsToBuffer(rpAsID, rp.textureCoordinates);
+                    bufferMap.addMatrixToBuffer(rpAsID, mesh.transform.worldMatrix);
+                }else{
+                    bufferMap.updateTexCoordsBuffer(rpAsID, rp.textureCoordinates, this.indexMap[rpAsID][containerID].textureIndices[this.indexFinder[rpAsID]]);
+                    bufferMap.updateMatrixBuffer(rpAsID, mesh.transform.worldMatrix, this.indexMap[rpAsID][containerID].matrixIndices[this.indexFinder[rpAsID]]);
+                }
             }
         },
         mapTransformChildren(bufferMap, arrOfChildren, containerID){
@@ -171,7 +183,7 @@ class RGraphics {
         addTexCoordsToBuffer(batchID, texcoords){
             const bufferObject = this.batches[batchID];
             this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.texcoordBuffer);
-            this.gl.bufferSubData(this.gl.ARRAY_BUFFER, bufferObject.texcoordBufferlength * 4, texcoords);
+            this.gl.bufferSubData(this.gl.ARRAY_BUFFER, bufferObject.texcoordBufferlength * AppSettings.glBytesInFloat, texcoords);
             bufferObject.texcoordBufferlength += texcoords.length;
             if(bufferObject.texcoordBufferlength * 4 == AppSettings.vertexBufferSize){
                 alert("WebGL: Max amount of meshes hit. Consider increasing buffer size.");
@@ -180,8 +192,18 @@ class RGraphics {
         addMatrixToBuffer(batchID, matrix){
             const bufferObject = this.batches[batchID];
             this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.matrixBuffer);
-            this.gl.bufferSubData(this.gl.ARRAY_BUFFER, bufferObject.matrixBufferlength * 4, matrix);
+            this.gl.bufferSubData(this.gl.ARRAY_BUFFER, bufferObject.matrixBufferlength * AppSettings.glBytesInFloat, matrix);
             bufferObject.matrixBufferlength += matrix.length;
+        },
+        updateTexCoordsBuffer(batchID, texcoords, index){
+            const bufferObject = this.batches[batchID];
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.texcoordBuffer);
+            this.gl.bufferSubData(this.gl.ARRAY_BUFFER, index * AppSettings.glBytesInFloat, texcoords);
+        },
+        updateMatrixBuffer(batchID, matrix, index){
+            const bufferObject = this.batches[batchID];
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.matrixBuffer);
+            this.gl.bufferSubData(this.gl.ARRAY_BUFFER, index * AppSettings.glBytesInFloat, matrix);
         },
         generateBatchID(rp){
             let id = "";
@@ -391,11 +413,16 @@ class RGraphics {
     }
 
     #CleanDirtyContainers(){
-        for(let container of this.#dirtyContainers){
-            container.transform.updateWorldMatrix(Matrix.identity);
-        }
+        let i = this.#dirtyContainers.length - 1;
+        while(i >= 0){
+            const container = this.#dirtyContainers[i];
+            this.#BatchMapIndex.mapContainer(this.#BufferMap, container);
 
-        this.#dirtyContainers = [];
+            //container.transform.updateWorldMatrix(Matrix.identity);
+
+            this.#dirtyContainers.pop();
+            i--;
+        }
     }
 
     #CullObjectsToRender(){
@@ -413,6 +440,7 @@ class RGraphics {
             if(obj instanceof Container){
                 this.#BatchMapIndex.mapContainer(this.#BufferMap, obj);
             }else{
+                console.log(obj);
                 this.#BatchMapIndex.mapConnection(this.#BufferMap, obj);
             }
         }

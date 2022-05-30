@@ -53,7 +53,7 @@ class Main {
         document.body.onmousedown = function(){return false};  //Disables the scroll 'compass' when clicking with middle mouse
         this.SwitchInputSystem(InputSystem.Create);
         Debug.ToggleDebugMode();
-        this.LoadScene(BasicTest);
+        //this.LoadScene(BasicTest);
     }
 
     ParseFile(){
