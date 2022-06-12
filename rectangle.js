@@ -257,10 +257,6 @@ class Rectangle extends Mesh {
         return new Vector2(-0.5, -0.5);
     }
 
-    get shape(){
-        return this.transform.worldMatrix;
-    }
-
     constructor(parent, offset, scale, renderPropertiesArray){
         if( ! renderPropertiesArray) throw new Error();
         super(parent, offset, scale, renderPropertiesArray);

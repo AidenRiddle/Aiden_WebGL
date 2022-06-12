@@ -453,14 +453,6 @@ class TextMesh extends Rectangle {
 }
 
 class LetterQuad extends Mesh {
-    get shape(){
-        return [
-            this.transform.worldMatrix[0], this.transform.worldMatrix[1], this.transform.worldMatrix[2],
-            this.transform.worldMatrix[3], this.transform.worldMatrix[4], this.transform.worldMatrix[5],
-            this.transform.worldMatrix[6], this.transform.worldMatrix[7], this.transform.worldMatrix[8]
-        ];
-    }
-
     constructor(parent, letter){
         super(
             parent,

@@ -28,7 +28,9 @@ class RGraphics {
     #renderPropertiesBatch = [];
     #BatchMapIndex = {
         indexFinder: {},
-        indexMap: {},
+        indexMap: {
+            O_ConnectionBatch_000: {}
+        },
         mapContainer(bufferMap, container){
             for(let i = 0, k = Object.keys(this.indexMap); i < k.length; i++){
                 this.indexFinder[k[i]] = -1;
@@ -41,10 +43,22 @@ class RGraphics {
         mapConnection(bufferMap, connection){
             if(!connection) return;
             const rpAsID = "O_ConnectionBatch_000";
-            const matA = new Float32Array([1, 0, 0, 0, 1, 0, connection.A.x, connection.A.y, 1]);
-            const matB = new Float32Array([1, 0, 0, 0, 1, 0, connection.B.x, connection.B.y, 1]);
-            bufferMap.addMatrixToBuffer(rpAsID, matA);
-            bufferMap.addMatrixToBuffer(rpAsID, matB);
+            const matA = connection.in.worldMatrix;
+            const matB = connection.out.worldMatrix;
+
+            if(!this.indexMap[rpAsID][connection.id]){
+                this.indexMap[rpAsID][connection.id] = {
+                    textureIndices: [],
+                    matrixIndices: []
+                }
+                this.indexMap[rpAsID][connection.id].matrixIndices.push(bufferMap.batches[rpAsID].matrixBufferlength)
+                bufferMap.addMatrixToBuffer(rpAsID, matA);
+                this.indexMap[rpAsID][connection.id].matrixIndices.push(bufferMap.batches[rpAsID].matrixBufferlength)
+                bufferMap.addMatrixToBuffer(rpAsID, matB);
+            }else{
+                bufferMap.updateMatrixBuffer(rpAsID, matA, this.indexMap[rpAsID][connection.id].matrixIndices[0]);
+                bufferMap.updateMatrixBuffer(rpAsID, matB, this.indexMap[rpAsID][connection.id].matrixIndices[1]);
+            }
         },
         mapMesh(bufferMap, mesh, containerID){
             if(!mesh) return;
@@ -415,10 +429,12 @@ class RGraphics {
     #CleanDirtyContainers(){
         let i = this.#dirtyContainers.length - 1;
         while(i >= 0){
-            const container = this.#dirtyContainers[i];
-            this.#BatchMapIndex.mapContainer(this.#BufferMap, container);
-
-            //container.transform.updateWorldMatrix(Matrix.identity);
+            const mesh = this.#dirtyContainers[i];
+            if(mesh instanceof Connection){
+                this.#BatchMapIndex.mapConnection(this.#BufferMap, mesh);
+            }else{
+                this.#BatchMapIndex.mapContainer(this.#BufferMap, mesh);
+            }
 
             this.#dirtyContainers.pop();
             i--;
@@ -435,24 +451,14 @@ class RGraphics {
     }
 
     #AdvancedBatch(){
-        console.log("Batching " + this.#scene.objectsInScene.length + " objects.");
+        //console.log("Batching " + this.#scene.objectsInScene.length + " objects.");
         for(let obj of this.#scene.objectsInScene){
             if(obj instanceof Container){
                 this.#BatchMapIndex.mapContainer(this.#BufferMap, obj);
             }else{
-                console.log(obj);
                 this.#BatchMapIndex.mapConnection(this.#BufferMap, obj);
             }
         }
-        //For every dirty object, find its RPs and the RPs of its children
-
-        //If new RPs have been found, allocate a new buffer on the GPU
-
-        //Clean the dirty objects
-        
-        //Store the TexCoord and Matrix data into the appropriate "batch/buffer" on the GPU
-
-        //Update the LocationMap
     }
 
     #DebugRenderProfile(){

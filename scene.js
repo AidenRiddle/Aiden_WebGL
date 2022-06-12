@@ -127,8 +127,8 @@ class Scene {
         if(this.FindConnection(connectionID) !== null) return;
         if(connectionData.from.name === undefined) return;
         
-        const socIn = this.GetSocketIn(connectionData.from.name, connectionData.from.property).position;
-        const socOut = this.GetSocketOut(connectionData.to.name, connectionData.to.property).position;
+        const socIn = this.GetSocketIn(connectionData.from.name, connectionData.from.property);
+        const socOut = this.GetSocketOut(connectionData.to.name, connectionData.to.property);
         const connectionInstance = new Connection(connectionID, socIn, socOut);
         this.#connectionsInScene.push(connectionID);
         this.#objectsInScene.push(connectionInstance);  //Add object to world
@@ -175,7 +175,7 @@ class Scene {
 
         //Create all the connections from the save file
         for(let connectionID in saveFile.connections){
-            this.#UpdateConnection(connectionID, saveFile.connections[connectionID]);    //TODO: must check existing connections
+            this.#UpdateConnection(parseInt(connectionID), saveFile.connections[connectionID]);    //TODO: must check existing connections
         }
 
         //Queue a batch call and a draw call
@@ -314,7 +314,6 @@ class Scene {
             returnObject = this.#CheckContainer(coordinates, this.#objectsInScene[i]);
             if(returnObject != null){
                 this.activeContainer = returnObject.parent;
-                console.log(returnObject);
                 return returnObject;
             }
         }
@@ -365,11 +364,13 @@ class Scene {
         const to = rect2.container.text;
         const connectionID = this.#jsondb.CreateConnection(nameOfContainer, from, nameOfTarget, to);
         if(connectionID === null) return;
+
+        this.#jsondb.Print();
         
         //If the database request succeeds, create a new connection in the scene.
         this.#previewConnectionRendererEnabled = false;      //Deactivate the rendering of the preview.
         this.#connectionsInScene.push(connectionID);
-        this.#AddObjectToScene(new Connection(connectionID, rect1.position, rect2.position));
+        this.#AddObjectToScene(new Connection(connectionID, rect1, rect2));
     }
     
     AddVariable(container, name, label){
@@ -397,12 +398,29 @@ class Scene {
     ResizeContainer(container, referencePoint, finalPos){
         container.Resize(referencePoint, finalPos);
         this.#gl.MakeDirty(container);
+        const containers = this.#jsondb.containers;
+        const connections = [].concat(containers[container.name].connectionsIn, containers[container.name].connectionsOut);
+        for(let con of this.#objectsInScene){
+            if(!(con instanceof Connection)) continue;
+            if(connections.includes(con.id)){
+                this.#gl.MakeDirty(con);
+            }
+        }
         this.Refresh();
     }
 
     TranslateContainer(container, finalPos){
         container.Translate(finalPos);
         this.#gl.MakeDirty(container);
+        const containers = this.#jsondb.containers;
+        const connections = [].concat(containers[container.name].connectionsIn, containers[container.name].connectionsOut);
+        for(let con of this.#objectsInScene){
+            if(!(con instanceof Connection)) continue;
+            if(connections.includes(con.id)){
+                this.#gl.MakeDirty(con);
+            }
+        }
+
         this.Refresh();
     }
 
