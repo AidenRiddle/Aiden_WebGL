@@ -31,6 +31,12 @@ To resize a class container, use the "Scale" tool and click and drag from any of
 If you already have a few files on hand (currently the only files supported are **.java** files), you can upload them using the "Choose files" button at the bottom of the toolsbar.
 This will import and parse your files into the app, creating and linking all of the classes provided for you.
 
+A couple of test files are included in the repository.
+To use them, uncomment the function at **line 56 in app.js**.
+***BasicTest*** and ***HeavyTest*** are the names of the constants that store the data of those files.
+Use either of those as the parameter to the function, then save and reload the web page.
+
+
 ## Note from the developer
 
 This project is to help me learn the basics of a Graphics API as well as to understand the good practices vs bad practices. Throughout the development, I learned how to leverage the power of dedicated hardware through the use of Buffers and Uniforms, as well as some higher level concepts such as *Instanced Drawing, Batching draw calls, Texture atlasing, Scene Graph based Transforms and Text Rendering*.
