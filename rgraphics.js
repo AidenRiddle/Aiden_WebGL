@@ -1,3 +1,263 @@
+/**
+ * BatchMapIndex serves as the 'entry point' to any instance of the BufferMap class.
+ * It takes as input a set of object data (containers or connections) and maps that data to a specific set of batches.
+ * In order to update the data of an object later on, the location of that data is saved locally inside 'indexMap'.
+ * When an object is moved in the scene, this class will lookup the location of its data inside the buffers that it belongs to, and update its properties
+ *      directly within those buffers.
+ * See the BufferMap class.
+ */
+function BatchMapIndex(){
+    this.indexFinder = {}   //Used with indexMap to find the location of children data when updating a parent container
+    this.indexMap = {
+        O_ConnectionBatch_000: {}
+    }
+    //Stores the data of 'container' into appropriate buffers and recursively store the children's data.
+    this.mapContainer = function(bufferMap, container){
+        //Initializes indexFinder to the first location in the map
+        for(let i = 0, k = Object.keys(this.indexMap); i < k.length; i++){
+            this.indexFinder[k[i]] = -1;
+        }
+
+        //Update the world matrix of the container and its children
+        container.transform.updateWorldMatrix();
+
+        //Store the data onto the buffers and save the location of the data
+        this.mapMesh(bufferMap, container, container.name);
+
+        //Do the same for all of its children
+        this.mapTransformChildren(bufferMap, container.transform.children, container.name);
+
+        //When everything is done, reset the indexFinder ... Significant source for GARBAGE COLLECTION
+        this.indexFinder = {};
+    }
+    this.mapConnection = function(bufferMap, connection){
+        if(!connection) return;
+        const rpAsID = "O_ConnectionBatch_000";     //Hard coded, need to make a constant
+        const matA = connection.in.worldMatrix;
+        const matB = connection.out.worldMatrix;
+
+        //If this connection has not already been mapped to the buffer, create a new map for it using its ID
+        if(!this.indexMap[rpAsID][connection.id]){
+            this.indexMap[rpAsID][connection.id] = {
+                textureIndices: [],
+                matrixIndices: []
+            }
+            //Add its data to the buffer and store the location
+            this.indexMap[rpAsID][connection.id].matrixIndices.push(bufferMap.batches[rpAsID].matrixBufferlength)
+            bufferMap.addMatrixToBuffer(rpAsID, matA);
+            this.indexMap[rpAsID][connection.id].matrixIndices.push(bufferMap.batches[rpAsID].matrixBufferlength)
+            bufferMap.addMatrixToBuffer(rpAsID, matB);
+        }else{
+            //else get the location of the data on the buffer and update the data
+            bufferMap.updateMatrixBuffer(rpAsID, matA, this.indexMap[rpAsID][connection.id].matrixIndices[0]);
+            bufferMap.updateMatrixBuffer(rpAsID, matB, this.indexMap[rpAsID][connection.id].matrixIndices[1]);
+        }
+    }
+    this.mapMesh = function(bufferMap, mesh, containerID){
+        if(!mesh) return;
+        for(let rp of mesh.renderPropertiesArray){
+            const rpAsID = bufferMap.generateBatchID(rp);
+
+            //If the batch does not already exist, create a new one
+            if(! (bufferMap.batch_ids.includes(rpAsID))){
+                bufferMap.createNewBatch(rpAsID);
+                this.indexMap[rpAsID] = {};
+                this.indexFinder[rpAsID] = -1;
+            }
+
+            //If this container has not already been mapped to a buffer, create a new map for it using its ID
+            if(this.indexMap[rpAsID][containerID] === undefined){
+                this.indexMap[rpAsID][containerID] = {
+                    textureIndices: [],
+                    matrixIndices: []
+                }
+            }
+
+            //If there is new data to be added to the buffer (a new container is being mappeed, or a child has been added to the parent)
+            //add the data to the end of the buffer.
+            this.indexFinder[rpAsID]++;
+            if(this.indexFinder[rpAsID] >= this.indexMap[rpAsID][containerID].textureIndices.length){
+                this.indexMap[rpAsID][containerID].textureIndices.push(bufferMap.batches[rpAsID].texcoordBufferlength);
+                this.indexMap[rpAsID][containerID].matrixIndices.push(bufferMap.batches[rpAsID].matrixBufferlength);
+                bufferMap.addTexCoordsToBuffer(rpAsID, rp.textureCoordinates);
+                bufferMap.addMatrixToBuffer(rpAsID, mesh.transform.worldMatrix);
+            }else{
+                //else get the location of the object we are updating, and update its data in the buffer.
+                bufferMap.updateTexCoordsBuffer(rpAsID, rp.textureCoordinates, this.indexMap[rpAsID][containerID].textureIndices[this.indexFinder[rpAsID]]);
+                bufferMap.updateMatrixBuffer(rpAsID, mesh.transform.worldMatrix, this.indexMap[rpAsID][containerID].matrixIndices[this.indexFinder[rpAsID]]);
+            }
+        }
+    }
+    //Recursively map all the children as well as their children
+    this.mapTransformChildren = function(bufferMap, arrOfChildren, containerID){
+        for(let i = 0; i < arrOfChildren.length; i++){
+            this.mapMesh(bufferMap, arrOfChildren[i].mesh, containerID);
+            this.mapTransformChildren(bufferMap, arrOfChildren[i].children, containerID);
+        }
+    }
+};
+
+/**
+ * This class is used to keep track of the state of the buffers living on the GPU.
+ * All object data needing to be drawn is directly stored onto the GPU into the appropriate batch, which are just separate buffers.
+ * An object is mapped to ONE OR MORE batches based on its properties. The 2 key properties are the texture it uses, as well as the draw mode (Fill vs Outline).
+ * These batches speed up the total draw time, since the CPU can tell the GPU which objects to draw with different properties.
+ * With this method, the program can draw multiple objects in a single command, instead of having one command per object.
+ * 
+ * KNOWN ISSUES:
+ *  - Having objects living on the GPU makes for fast draw times, but debugging the buffer data is very hard. It is also impossible to 'delete' an object on the buffer.
+ *  - Some machines have a more restrictive limit on the number of buffers the program can allocate on the GPU, and also on the size of each buffer.
+ */
+function BufferMap(gl, program, vertexBuffer){
+    this.gl = gl;
+    this.program = program;
+    this.vertexBuffer = vertexBuffer;
+    this.batch_ids = [];
+    this.batches = {};
+
+    this.createNewBatch = function(id){
+        this.batch_ids.push(id);
+        this.batches[id] = {
+            texcoordBuffer: this.gl.createBuffer(),
+            texcoordBufferlength: 0,
+            matrixBuffer: this.gl.createBuffer(),
+            matrixBufferlength: 0,
+        }
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.batches[id].texcoordBuffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, AppSettings.vertexBufferSize, this.gl.DYNAMIC_DRAW);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.batches[id].matrixBuffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, AppSettings.matrixBufferSize, this.gl.DYNAMIC_DRAW);
+
+        this.batch_ids.sort((a, b) => {
+            const aInfo = a.split('_');
+            const bInfo = b.split('_');
+            if(aInfo[2] == bInfo[2]){ return aInfo[0].localeCompare(bInfo[0]); }
+            return parseInt(aInfo[2]) - parseInt(bInfo[2]);
+        })
+    }
+
+    //Change programs to the quad program and enable all associated attributes 
+    this.setActiveQuadBuffers = function(batchID){
+        let nElements;
+        let sizePerAttrib;
+        let stride;
+
+        nElements = AppSettings.vertexSize;                       // 2
+        stride = 0;                                               // 0
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vertexBuffer);
+        this.gl.enableVertexAttribArray(this.program.quadsLoc.aVertexPosition);
+        this.gl.vertexAttribPointer(this.program.quadsLoc.aVertexPosition, nElements, this.gl.FLOAT, false, stride, 0);
+        this.gl.vertexAttribDivisor(this.program.quadsLoc.aVertexPosition, 0);
+
+        nElements = 3;
+        sizePerAttrib = AppSettings.glBytesInFloat * nElements;   // 12
+        stride = sizePerAttrib * 3;                               // 36
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.batches[batchID].matrixBuffer);
+        this.gl.enableVertexAttribArray(this.program.quadsLoc.aWorldMatrix1);
+        this.gl.enableVertexAttribArray(this.program.quadsLoc.aWorldMatrix2);
+        this.gl.enableVertexAttribArray(this.program.quadsLoc.aWorldMatrix3);
+        this.gl.vertexAttribPointer(this.program.quadsLoc.aWorldMatrix1, nElements, this.gl.FLOAT, false, stride, 0);
+        this.gl.vertexAttribPointer(this.program.quadsLoc.aWorldMatrix2, nElements, this.gl.FLOAT, false, stride, sizePerAttrib);
+        this.gl.vertexAttribPointer(this.program.quadsLoc.aWorldMatrix3, nElements, this.gl.FLOAT, false, stride, sizePerAttrib * 2);
+        this.gl.vertexAttribDivisor(this.program.quadsLoc.aWorldMatrix1, 1);
+        this.gl.vertexAttribDivisor(this.program.quadsLoc.aWorldMatrix2, 1);
+        this.gl.vertexAttribDivisor(this.program.quadsLoc.aWorldMatrix3, 1);
+
+        nElements = AppSettings.vertexSize * 2;                   // 4
+        sizePerAttrib = AppSettings.glBytesInFloat * nElements;   // 16
+        stride = sizePerAttrib * 2;                               // 32
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.batches[batchID].texcoordBuffer);
+        this.gl.enableVertexAttribArray(this.program.quadsLoc.aTexcoord1);
+        this.gl.enableVertexAttribArray(this.program.quadsLoc.aTexcoord2);
+        this.gl.vertexAttribPointer(this.program.quadsLoc.aTexcoord1, nElements, this.gl.FLOAT, false, stride, 0);
+        this.gl.vertexAttribPointer(this.program.quadsLoc.aTexcoord2, nElements, this.gl.FLOAT, false, stride, sizePerAttrib);
+        this.gl.vertexAttribDivisor(this.program.quadsLoc.aTexcoord1, 1);
+        this.gl.vertexAttribDivisor(this.program.quadsLoc.aTexcoord2, 1);
+        
+        this.gl.useProgram(this.program.quads);
+        
+    }
+
+    //Change programs to the connection program and enable all associated attributes 
+    this.setActiveConnectionBuffers = function(){
+        const batchID = "O_ConnectionBatch_000";
+        let nElements;
+        let sizePerAttrib;
+        let stride;
+        
+        nElements = 3;                                            // 3
+        sizePerAttrib = AppSettings.glBytesInFloat * nElements;   // 12
+        stride = sizePerAttrib * 6;                               // 72
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.batches[batchID].matrixBuffer);
+        this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix1, nElements, this.gl.FLOAT, false, stride, 0);
+        this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix2, nElements, this.gl.FLOAT, false, stride, sizePerAttrib);
+        this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix3, nElements, this.gl.FLOAT, false, stride, sizePerAttrib * 2);
+        this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix4, nElements, this.gl.FLOAT, false, stride, sizePerAttrib * 3);
+        this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix5, nElements, this.gl.FLOAT, false, stride, sizePerAttrib * 4);
+        this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix6, nElements, this.gl.FLOAT, false, stride, sizePerAttrib * 5);
+        this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix1, 1);
+        this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix2, 1);
+        this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix3, 1);
+        this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix4, 1);
+        this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix5, 1);
+        this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix6, 1);
+        this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix1);
+        this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix2);
+        this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix3);
+        this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix4);
+        this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix5);
+        this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix6);
+
+        this.gl.useProgram(this.program.connections);
+
+        this.gl.uniform4fv(this.program.connectionsLoc.uTexcoord, [0, 0, 1, 0]);
+        this.gl.uniform1i(this.program.connectionsLoc.uTexture, 2);
+    }
+    this.addTexCoordsToBuffer = function(batchID, texcoords){
+        const bufferObject = this.batches[batchID];
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.texcoordBuffer);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, bufferObject.texcoordBufferlength * AppSettings.glBytesInFloat, texcoords);
+        bufferObject.texcoordBufferlength += texcoords.length;
+        if(bufferObject.texcoordBufferlength * 4 == AppSettings.vertexBufferSize){
+            alert("WebGL: Max amount of meshes hit. Consider increasing buffer size.");
+        }
+    }
+    this.addMatrixToBuffer = function(batchID, matrix){
+        const bufferObject = this.batches[batchID];
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.matrixBuffer);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, bufferObject.matrixBufferlength * AppSettings.glBytesInFloat, matrix);
+        bufferObject.matrixBufferlength += matrix.length;
+    }
+    this.updateTexCoordsBuffer = function(batchID, texcoords, index){
+        const bufferObject = this.batches[batchID];
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.texcoordBuffer);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, index * AppSettings.glBytesInFloat, texcoords);
+    }
+    this.updateMatrixBuffer = function(batchID, matrix, index){
+        const bufferObject = this.batches[batchID];
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.matrixBuffer);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, index * AppSettings.glBytesInFloat, matrix);
+    }
+    this.generateBatchID = function(rp){
+        let id = "";
+        if(rp.drawMethod == DrawMode.Fill){ id += "F";}
+        if(rp.drawMethod == DrawMode.Outline){ id += "O";}
+        id += "_" + rp.textureName + "_";
+        if(rp.zIndex == 100){ id += "100"; }
+        else if(rp.zIndex < 10){ id += "00" + rp.zIndex; }
+        else if(rp.zIndex < 100){ id += "0" + rp.zIndex; }
+
+        return id;
+    }
+    this.getBatchDrawMethod = function(batchID){
+        if(batchID.split('_')[0] == 'F') return DrawMode.Fill;
+        return DrawMode.Outline;
+    }
+    this.getBatchTextureUnit = function(batchID){
+        return batchID.split('_')[1];
+    }
+};
+
 class RGraphics {
     itemSize = AppSettings.vertexSize;
     #instanceMesh = {
@@ -21,224 +281,13 @@ class RGraphics {
         connections: null,
         connectionsLoc: {}
     };
-    #matrixLocation;
 
+    //List of containers to be updated before each draw event
     #dirtyContainers = [];
     
     #renderPropertiesBatch = [];
-    #BatchMapIndex = {
-        indexFinder: {},
-        indexMap: {
-            O_ConnectionBatch_000: {}
-        },
-        mapContainer(bufferMap, container){
-            for(let i = 0, k = Object.keys(this.indexMap); i < k.length; i++){
-                this.indexFinder[k[i]] = -1;
-            }
-            container.transform.updateWorldMatrix();
-            this.mapMesh(bufferMap, container, container.name);
-            this.mapTransformChildren(bufferMap, container.transform.children, container.name);
-            this.indexFinder = {};
-        },
-        mapConnection(bufferMap, connection){
-            if(!connection) return;
-            const rpAsID = "O_ConnectionBatch_000";
-            const matA = connection.in.worldMatrix;
-            const matB = connection.out.worldMatrix;
-
-            if(!this.indexMap[rpAsID][connection.id]){
-                this.indexMap[rpAsID][connection.id] = {
-                    textureIndices: [],
-                    matrixIndices: []
-                }
-                this.indexMap[rpAsID][connection.id].matrixIndices.push(bufferMap.batches[rpAsID].matrixBufferlength)
-                bufferMap.addMatrixToBuffer(rpAsID, matA);
-                this.indexMap[rpAsID][connection.id].matrixIndices.push(bufferMap.batches[rpAsID].matrixBufferlength)
-                bufferMap.addMatrixToBuffer(rpAsID, matB);
-            }else{
-                bufferMap.updateMatrixBuffer(rpAsID, matA, this.indexMap[rpAsID][connection.id].matrixIndices[0]);
-                bufferMap.updateMatrixBuffer(rpAsID, matB, this.indexMap[rpAsID][connection.id].matrixIndices[1]);
-            }
-        },
-        mapMesh(bufferMap, mesh, containerID){
-            if(!mesh) return;
-            for(let rp of mesh.renderPropertiesArray){
-                const rpAsID = bufferMap.generateBatchID(rp);
-                if(! (bufferMap.batch_ids.includes(rpAsID))){
-                    bufferMap.createNewBatch(rpAsID);
-                    this.indexMap[rpAsID] = {};
-                    this.indexFinder[rpAsID] = -1;
-                }
-                if(this.indexMap[rpAsID][containerID] === undefined){
-                    this.indexMap[rpAsID][containerID] = {
-                        textureIndices: [],
-                        matrixIndices: []
-                    }
-                }
-                this.indexFinder[rpAsID]++;
-                if(this.indexFinder[rpAsID] >= this.indexMap[rpAsID][containerID].textureIndices.length){
-                    this.indexMap[rpAsID][containerID].textureIndices.push(bufferMap.batches[rpAsID].texcoordBufferlength);
-                    this.indexMap[rpAsID][containerID].matrixIndices.push(bufferMap.batches[rpAsID].matrixBufferlength);
-                    bufferMap.addTexCoordsToBuffer(rpAsID, rp.textureCoordinates);
-                    bufferMap.addMatrixToBuffer(rpAsID, mesh.transform.worldMatrix);
-                }else{
-                    bufferMap.updateTexCoordsBuffer(rpAsID, rp.textureCoordinates, this.indexMap[rpAsID][containerID].textureIndices[this.indexFinder[rpAsID]]);
-                    bufferMap.updateMatrixBuffer(rpAsID, mesh.transform.worldMatrix, this.indexMap[rpAsID][containerID].matrixIndices[this.indexFinder[rpAsID]]);
-                }
-            }
-        },
-        mapTransformChildren(bufferMap, arrOfChildren, containerID){
-            for(let i = 0; i < arrOfChildren.length; i++){
-                this.mapMesh(bufferMap, arrOfChildren[i].mesh, containerID);
-                this.mapTransformChildren(bufferMap, arrOfChildren[i].children, containerID);
-            }
-        }
-    };
-    #BufferMap = {
-        gl: this.#gl,
-        program: this.#program,
-        vertexBuffer: null,
-        batch_ids: [],
-        batches: {},
-        createNewBatch(id){
-            this.batch_ids.push(id);
-            this.batches[id] = {
-                texcoordBuffer: this.gl.createBuffer(),
-                texcoordBufferlength: 0,
-                matrixBuffer: this.gl.createBuffer(),
-                matrixBufferlength: 0,
-            }
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.batches[id].texcoordBuffer);
-            this.gl.bufferData(this.gl.ARRAY_BUFFER, AppSettings.vertexBufferSize, this.gl.DYNAMIC_DRAW);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.batches[id].matrixBuffer);
-            this.gl.bufferData(this.gl.ARRAY_BUFFER, AppSettings.matrixBufferSize, this.gl.DYNAMIC_DRAW);
-
-            this.batch_ids.sort((a, b) => {
-                const aInfo = a.split('_');
-                const bInfo = b.split('_');
-                if(aInfo[2] == bInfo[2]){ return aInfo[0].localeCompare(bInfo[0]); }
-                return parseInt(aInfo[2]) - parseInt(bInfo[2]);
-            })
-        },
-        setActiveQuadBuffers(batchID){
-            let nElements;
-            let sizePerAttrib;
-            let stride;
-
-            nElements = AppSettings.vertexSize;                       // 2
-            stride = 0;                                               // 0
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vertexBuffer);
-            this.gl.enableVertexAttribArray(this.program.quadsLoc.aVertexPosition);
-            this.gl.vertexAttribPointer(this.program.quadsLoc.aVertexPosition, nElements, this.gl.FLOAT, false, stride, 0);
-            this.gl.vertexAttribDivisor(this.program.quadsLoc.aVertexPosition, 0);
-    
-            nElements = 3;
-            sizePerAttrib = AppSettings.glBytesInFloat * nElements;   // 12
-            stride = sizePerAttrib * 3;                               // 36
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.batches[batchID].matrixBuffer);
-            this.gl.enableVertexAttribArray(this.program.quadsLoc.aWorldMatrix1);
-            this.gl.enableVertexAttribArray(this.program.quadsLoc.aWorldMatrix2);
-            this.gl.enableVertexAttribArray(this.program.quadsLoc.aWorldMatrix3);
-            this.gl.vertexAttribPointer(this.program.quadsLoc.aWorldMatrix1, nElements, this.gl.FLOAT, false, stride, 0);
-            this.gl.vertexAttribPointer(this.program.quadsLoc.aWorldMatrix2, nElements, this.gl.FLOAT, false, stride, sizePerAttrib);
-            this.gl.vertexAttribPointer(this.program.quadsLoc.aWorldMatrix3, nElements, this.gl.FLOAT, false, stride, sizePerAttrib * 2);
-            this.gl.vertexAttribDivisor(this.program.quadsLoc.aWorldMatrix1, 1);
-            this.gl.vertexAttribDivisor(this.program.quadsLoc.aWorldMatrix2, 1);
-            this.gl.vertexAttribDivisor(this.program.quadsLoc.aWorldMatrix3, 1);
-    
-            nElements = AppSettings.vertexSize * 2;                   // 4
-            sizePerAttrib = AppSettings.glBytesInFloat * nElements;   // 16
-            stride = sizePerAttrib * 2;                               // 32
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.batches[batchID].texcoordBuffer);
-            this.gl.enableVertexAttribArray(this.program.quadsLoc.aTexcoord1);
-            this.gl.enableVertexAttribArray(this.program.quadsLoc.aTexcoord2);
-            this.gl.vertexAttribPointer(this.program.quadsLoc.aTexcoord1, nElements, this.gl.FLOAT, false, stride, 0);
-            this.gl.vertexAttribPointer(this.program.quadsLoc.aTexcoord2, nElements, this.gl.FLOAT, false, stride, sizePerAttrib);
-            this.gl.vertexAttribDivisor(this.program.quadsLoc.aTexcoord1, 1);
-            this.gl.vertexAttribDivisor(this.program.quadsLoc.aTexcoord2, 1);
-            
-            this.gl.useProgram(this.program.quads);
-            
-        },
-        setActiveConnectionBuffers(){
-            const batchID = "O_ConnectionBatch_000";
-            let nElements;
-            let sizePerAttrib;
-            let stride;
-            
-            nElements = 3;                                            // 3
-            sizePerAttrib = AppSettings.glBytesInFloat * nElements;   // 12
-            stride = sizePerAttrib * 6;                               // 72
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.batches[batchID].matrixBuffer);
-            this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix1, nElements, this.gl.FLOAT, false, stride, 0);
-            this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix2, nElements, this.gl.FLOAT, false, stride, sizePerAttrib);
-            this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix3, nElements, this.gl.FLOAT, false, stride, sizePerAttrib * 2);
-            this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix4, nElements, this.gl.FLOAT, false, stride, sizePerAttrib * 3);
-            this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix5, nElements, this.gl.FLOAT, false, stride, sizePerAttrib * 4);
-            this.gl.vertexAttribPointer(this.program.connectionsLoc.aWorldMatrix6, nElements, this.gl.FLOAT, false, stride, sizePerAttrib * 5);
-            this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix1, 1);
-            this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix2, 1);
-            this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix3, 1);
-            this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix4, 1);
-            this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix5, 1);
-            this.gl.vertexAttribDivisor(this.program.connectionsLoc.aWorldMatrix6, 1);
-            this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix1);
-            this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix2);
-            this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix3);
-            this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix4);
-            this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix5);
-            this.gl.enableVertexAttribArray(this.program.connectionsLoc.aWorldMatrix6);
-
-            this.gl.useProgram(this.program.connections);
-
-            this.gl.uniform4fv(this.program.connectionsLoc.uTexcoord, [0, 0, 1, 0]);
-            this.gl.uniform1i(this.program.connectionsLoc.uTexture, 2);
-        },
-        addTexCoordsToBuffer(batchID, texcoords){
-            const bufferObject = this.batches[batchID];
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.texcoordBuffer);
-            this.gl.bufferSubData(this.gl.ARRAY_BUFFER, bufferObject.texcoordBufferlength * AppSettings.glBytesInFloat, texcoords);
-            bufferObject.texcoordBufferlength += texcoords.length;
-            if(bufferObject.texcoordBufferlength * 4 == AppSettings.vertexBufferSize){
-                alert("WebGL: Max amount of meshes hit. Consider increasing buffer size.");
-            }
-        },
-        addMatrixToBuffer(batchID, matrix){
-            const bufferObject = this.batches[batchID];
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.matrixBuffer);
-            this.gl.bufferSubData(this.gl.ARRAY_BUFFER, bufferObject.matrixBufferlength * AppSettings.glBytesInFloat, matrix);
-            bufferObject.matrixBufferlength += matrix.length;
-        },
-        updateTexCoordsBuffer(batchID, texcoords, index){
-            const bufferObject = this.batches[batchID];
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.texcoordBuffer);
-            this.gl.bufferSubData(this.gl.ARRAY_BUFFER, index * AppSettings.glBytesInFloat, texcoords);
-        },
-        updateMatrixBuffer(batchID, matrix, index){
-            const bufferObject = this.batches[batchID];
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferObject.matrixBuffer);
-            this.gl.bufferSubData(this.gl.ARRAY_BUFFER, index * AppSettings.glBytesInFloat, matrix);
-        },
-        generateBatchID(rp){
-            let id = "";
-            if(rp.drawMethod == DrawMode.Fill){ id += "F";}
-            if(rp.drawMethod == DrawMode.Outline){ id += "O";}
-            id += "_" + rp.textureName + "_";
-            if(rp.zIndex == 100){ id += "100"; }
-            else if(rp.zIndex < 10){ id += "00" + rp.zIndex; }
-            else if(rp.zIndex < 100){ id += "0" + rp.zIndex; }
-
-            return id;
-        },
-        getBatchDrawMethod(batchID){
-            if(batchID.split('_')[0] == 'F') return DrawMode.Fill;
-            return DrawMode.Outline;
-        },
-        getBatchTextureUnit(batchID){
-            return batchID.split('_')[1];
-        }
-    };
-
+    #BatchMapIndex = new BatchMapIndex();
+    #BufferMap = new BufferMap();
     #textureTable = new Object(); //Dictionary <String textureName, Int textureLocationUnit>
 
     #glVertexBuffer;
@@ -260,10 +309,8 @@ class RGraphics {
         this.#InitializeShaders();
         this.#InitializeProgram();
         this.#InitializeDefaultTextures();
-        this.#BufferMap.gl = this.#gl;
-        this.#BufferMap.program = this.#program;
-        this.#BufferMap.vertexBuffer = this.#glVertexBuffer;
-        this.#BufferMap.createNewBatch("O_ConnectionBatch_000");
+        this.#BufferMap = new BufferMap(this.#gl, this.#program, this.#glVertexBuffer);
+        this.#BufferMap.createNewBatch("O_ConnectionBatch_000");    //Creates the Connection batch at the very first index
     }
 
     #InitializeGLContext(){
@@ -311,6 +358,8 @@ class RGraphics {
     }
 
     #InitializeProgram(){
+
+        //Setup connections program
         this.#program.connections = this.#gl.createProgram();
 
         this.#gl.attachShader(this.#program.connections, this.#vertexConnectionShader);
@@ -323,7 +372,7 @@ class RGraphics {
             console.error('fs info-log: ' + this.#gl.getShaderInfoLog(this.#fragmentShader));
         }
 
-        //Setup the texture coordinates buffer
+        //Setup attribute pointers for the connection program
         this.#program.connectionsLoc.aWorldMatrix1 = this.#gl.getAttribLocation(this.#program.connections, "a_worldMatrix1");
         this.#program.connectionsLoc.aWorldMatrix2 = this.#gl.getAttribLocation(this.#program.connections, "a_worldMatrix2");
         this.#program.connectionsLoc.aWorldMatrix3 = this.#gl.getAttribLocation(this.#program.connections, "a_worldMatrix3");
@@ -331,12 +380,13 @@ class RGraphics {
         this.#program.connectionsLoc.aWorldMatrix5 = this.#gl.getAttribLocation(this.#program.connections, "a_worldMatrix5");
         this.#program.connectionsLoc.aWorldMatrix6 = this.#gl.getAttribLocation(this.#program.connections, "a_worldMatrix6");
 
-        //Setup texture unit pointer
+        //Setup uniform pointers for the the connection program
         this.#program.connectionsLoc.uTexture = this.#gl.getUniformLocation(this.#program.connections, "u_texture");
         this.#program.connectionsLoc.uTexcoord = this.#gl.getUniformLocation(this.#program.connections, "u_texcoord");
         this.#program.connectionsLoc.viewMatrix = this.#gl.getUniformLocation(this.#program.connections, "u_matrix");
         
         
+        //Setup quads program
         this.#program.quads = this.#gl.createProgram();
 
         this.#gl.attachShader(this.#program.quads, this.#vertexShader);
@@ -349,26 +399,28 @@ class RGraphics {
             console.error('fs info-log: ' + this.#gl.getShaderInfoLog(this.#fragmentShader));
         }
 
-        //Setup the vertex buffer
+        //Setup the vertex buffer and initialize it with the default quad mesh (this.#instanceMesh.quad_vertices)
         this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#glVertexBuffer);
         this.#gl.bufferData(this.#gl.ARRAY_BUFFER, this.#instanceMesh.quad_vertices, this.#gl.STATIC_DRAW);
         this.#program.quadsLoc.aVertexPosition = this.#gl.getAttribLocation(this.#program.quads, "a_position");
 
-        //Setup the texture coordinates buffer
+        //Setup the texture coordinate attribute pointers
         this.#program.quadsLoc.aTexcoord1 = this.#gl.getAttribLocation(this.#program.quads, "a_texcoord2Verts1");
         this.#program.quadsLoc.aTexcoord2 = this.#gl.getAttribLocation(this.#program.quads, "a_texcoord2Verts2");
 
-        //Setup the matrix buffer
+        //Setup the matrix buffer attribute pointers
         this.#program.quadsLoc.aWorldMatrix1 = this.#gl.getAttribLocation(this.#program.quads, "a_worldMatrix1");
         this.#program.quadsLoc.aWorldMatrix2 = this.#gl.getAttribLocation(this.#program.quads, "a_worldMatrix2");
         this.#program.quadsLoc.aWorldMatrix3 = this.#gl.getAttribLocation(this.#program.quads, "a_worldMatrix3");
 
-        //Setup index buffer
+        //Setup index buffer and allocate a size of (this.#instanceMesh.outline.length * 2) bytes
         this.#gl.bindBuffer(this.#gl.ELEMENT_ARRAY_BUFFER, this.#glIndexBuffer);
         this.#gl.bufferData(this.#gl.ELEMENT_ARRAY_BUFFER, this.#instanceMesh.outline.length * 2, this.#gl.DYNAMIC_DRAW);
 
         //Setup texture unit pointer
         this.#program.quadsLoc.uTexture = this.#gl.getUniformLocation(this.#program.quads, "u_texture");
+
+        //Setup camera transform pointer
         this.#program.quadsLoc.viewMatrix = this.#gl.getUniformLocation(this.#program.quads, "u_matrix");
     }
     
@@ -426,6 +478,8 @@ class RGraphics {
         return this.#textureTable[message];
     }
 
+    //Loops through all the dirty containers and updates their matrix.
+    //This method is called before each draw event
     #CleanDirtyContainers(){
         let i = this.#dirtyContainers.length - 1;
         while(i >= 0){
@@ -441,15 +495,7 @@ class RGraphics {
         }
     }
 
-    #CullObjectsToRender(){
-        //TODO: filter out meshes that aren't visible, i.e containers that are offscreen.
-        return this.#scene.objectsInScene;
-    }
-
-    #ResetBatchMaps(){
-        this.#renderPropertiesBatch = [];
-    }
-
+    //Loops through each object in the scene and maps it to a buffer in order to reduce draw calls
     #AdvancedBatch(){
         //console.log("Batching " + this.#scene.objectsInScene.length + " objects.");
         for(let obj of this.#scene.objectsInScene){
@@ -482,15 +528,8 @@ class RGraphics {
         //Draw all quad batches
         this.#gl.useProgram(this.#program.quads);
         this.#UpdateMatrix(this.#program.quadsLoc.viewMatrix);
-        //if(this.#BufferMap.batch_ids.length > 1) this.#SimpleDraw(1);
-        for(let i = 1; i < this.#BufferMap.batch_ids.length; i++){
+        for(let i = 1; i < this.#BufferMap.batch_ids.length; i++){  //Starts at i = 1, because i = 0 is the 'Connections' batch
             this.#SimpleDraw(i);
-        }
-
-        let rpBatch;
-        for(let i = 0; i < this.#renderPropertiesBatch.length; i++){
-            rpBatch = this.#renderPropertiesBatch[i];
-            //this.#SimpleDraw(this.GetTexture(rpBatch.textureName).unit, rpBatch.drawMethod, i);
         }
     }
     
@@ -499,6 +538,7 @@ class RGraphics {
         const batchID = "O_ConnectionBatch_000";
         this.#BufferMap.setActiveConnectionBuffers(batchID);
 
+        //Upload the indices of the vertices to use
         const drawMethod = this.#BufferMap.getBatchDrawMethod(batchID);
         let indices = new Uint16Array([0, 1]);
         this.#gl.bufferSubData(this.#gl.ELEMENT_ARRAY_BUFFER, 0, indices);
@@ -512,12 +552,14 @@ class RGraphics {
         const batchID = this.#BufferMap.batch_ids[batchIndex];
         this.#BufferMap.setActiveQuadBuffers(batchID);
 
+        //Upload the indices of the vertices to use
         const drawMethod = this.#BufferMap.getBatchDrawMethod(batchID);
         let indices = (drawMethod == DrawMode.Fill) ?
                         this.#instanceMesh.fill :
                         this.#instanceMesh.outline;
         this.#gl.bufferSubData(this.#gl.ELEMENT_ARRAY_BUFFER, 0, indices);
 
+        //Select the right texture to use
         this.#gl.uniform1i(this.#program.quadsLoc.uTexture, this.GetTexture(this.#BufferMap.getBatchTextureUnit(batchID)).unit);
 
         //Draw object
@@ -564,6 +606,7 @@ class RGraphics {
         });
     }
     
+    //An endpoint for other classes to mark an object as dirty. A dirty object will be 'cleaned' before every draw event. See CleanDirtyContainers().
     MakeDirty = (container) => {
         this.#dirtyContainers.push(container);
     }

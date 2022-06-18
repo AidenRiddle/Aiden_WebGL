@@ -105,6 +105,7 @@ class Container extends Rectangle {
 
         //TranslateHandle Settings.
         {
+            //Create a child to this Container to serve as a position reference for this translateHandle. 
             const positioner = { renderPropertiesArray: [] };
             positioner.transform = new Transform(positioner);
             positioner.transform.setParent(this);
@@ -324,7 +325,7 @@ class Container extends Rectangle {
         this.#colliders[handle.renderPropertiesArray[0].zIndex].push(handle);
         this.#colliderTypes[handle.renderPropertiesArray[0].zIndex].push(Hitbox.property);
         
-        //Resize the container to fit the new Property
+        //Resize the container to fit the new Property - NOT WORKING!!!!
         let propertyWidth = (Defaults.target_letter_texture_width * label.length) + Defaults.container_body_margin_left + Defaults.container_body_margin_right;
         if(propertyWidth > this.#biggestTextureWidth){
             this.#biggestTextureWidth = ~~propertyWidth + 1;
@@ -332,11 +333,10 @@ class Container extends Rectangle {
         let newX = 10 + this.#biggestTextureWidth;
         let newY = (this.#methodHandles.length > 0) ? this.#methodHandles[this.#methodHandles.length - 1].BR.y : this.#variableHandles[this.#variableHandles.length - 1].BR.y;
 
-        //this.Resize(this.TL, new Vector2(newX, newY));
+        //this.Resize(this.TL, new Vector2(newX, newY));    //NOT WORKING!!!
     }
 
     AddVariable(name, label){
-        //const origin = (this.#variables.length == 0) ? this.#body.TL : this.#variableHandles[this.#variableHandles.length - 1].BL;
         const origin = new Vector2(10, 10);
         this.#AddProperty(this.#variables, this.#variableHandles, name, label, origin, false);
     }

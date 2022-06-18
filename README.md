@@ -46,6 +46,6 @@ I also have a better understanding of the separation of logic demonstrated by th
 ## Known Issues
 - Overlapping geometry doesn't have z-index sorting.
 - Deleting/Removing and Hiding a class does not work.
-- - Resizing a class container doesn't hide overflowing text
+  - Resizing a class container doesn't hide overflowing text
 - Java language parser lacks many keywords and functionalities (i.e tokens such as @Override, import statements, support for multiple classes in a single file, constructors).
 - Zooming always pulls the camera closer to the center, rather than towards the cursor

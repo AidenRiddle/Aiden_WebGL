@@ -31,6 +31,7 @@ class Renderer {
     }
 }
 
+//Obsolete!!!! This class was used before the Scene Graph method was implemented. Need to delete
 class Vertex extends Vector2 {
     static #collection = [];
     static OnRenderFinished(){
@@ -134,6 +135,7 @@ class Transform {
         this.updateMethod(parentWorldMatrix);
     }
 
+    //Update this instance's world matrix by inheriting both X and Y scale
     updateWorldMatrixScaleXY(parentWorldMatrix){
         if (parentWorldMatrix) {
             Matrix.copy(Matrix.multiply(parentWorldMatrix, this.localMatrix), this.worldMatrix);
@@ -147,6 +149,7 @@ class Transform {
         });
     }
 
+    //Update this instance's world matrix by inheriting only the X scale
     updateWorldMatrixScaleX(parentWorldMatrix){
         if (parentWorldMatrix) {
             let copy = new Array(9);
@@ -163,6 +166,7 @@ class Transform {
         });
     }
 
+    //Update this instance's world matrix by inheriting only the Y scale
     updateWorldMatrixScaleY(parentWorldMatrix){
         if (parentWorldMatrix) {
             let copy = new Array(9);
@@ -179,6 +183,7 @@ class Transform {
         });
     }
 
+    //Update this instance's world matrix without inheriting its parent's scale
     updateWorldMatrixIgnoreScale(parentWorldMatrix){
         if (parentWorldMatrix) {
             Matrix.copy(parentWorldMatrix, this.worldMatrix);
@@ -205,7 +210,7 @@ class Transform {
 
 class Mesh extends Renderer {
     #transform = new Transform(this);
-    #scaleInheritanceMap;
+    #scaleInheritanceMap;   //obsolete, see Transform.updateMethod
 
     get transform(){
         return this.#transform;
@@ -277,6 +282,7 @@ class Rectangle extends Mesh {
     }
 }
 
+//Provides a top level transform for new objects to inherit from when they are placed in the scene
 class SceneMesh {
     static transform = new Transform();
 }

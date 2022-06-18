@@ -162,6 +162,7 @@ class VecMath {
         return false;
     }
 
+    //Need to merge with the Matrix class
     static m3 = {
         translate: function(tx, ty) {
           return [
